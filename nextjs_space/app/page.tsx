@@ -1,13 +1,15 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { useGameStore } from '@/lib/store';
+import { AIPlayerConfig } from '@/lib/engine/types';
 import LobbyScreen from './_components/lobby-screen';
 import GameBoard from './_components/game-board';
 import VictoryScreen from './_components/victory-screen';
 import ProfileScreen from './_components/profile-screen';
 import AchievementsScreen from './_components/achievements-screen';
+import MultiplayerScreen from './_components/multiplayer-screen';
 
-type ViewState = 'lobby' | 'game' | 'victory' | 'profile' | 'achievements';
+type ViewState = 'lobby' | 'game' | 'victory' | 'profile' | 'achievements' | 'multiplayer';
 
 export default function HomePage() {
   const [mounted, setMounted] = useState(false);
@@ -57,15 +59,20 @@ export default function HomePage() {
     return <AchievementsScreen onBack={() => setView('lobby')} />;
   }
 
+  if (view === 'multiplayer') {
+    return <MultiplayerScreen onBack={() => setView('lobby')} />;
+  }
+
   if (!gameState || view === 'lobby') {
     return (
       <LobbyScreen
-        onStart={(names, config, icons) => {
-          startGame(names, config, icons);
+        onStart={(names, config, icons, aiPlayers?: AIPlayerConfig[]) => {
+          startGame(names, config, icons, aiPlayers);
           setView('game');
         }}
         onShowProfile={() => setView('profile')}
         onShowAchievements={() => setView('achievements')}
+        onShowMultiplayer={() => setView('multiplayer')}
       />
     );
   }

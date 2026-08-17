@@ -1,16 +1,26 @@
 'use client';
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Gamepad2, Plus, Minus, Play, Sparkles, Zap, Skull, Settings2, Trophy, Clock, Coins, ShieldAlert, User, Award, Star } from 'lucide-react';
+import { Gamepad2, Plus, Minus, Play, Sparkles, Zap, Skull, Settings2, Trophy, Clock, Coins, ShieldAlert, User, Award, Star, Bot } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { GameConfig, GameMode } from '@/lib/engine/types';
+import { AIDifficulty, AIPersonality, AIPlayerConfig, GameConfig, GameMode } from '@/lib/engine/types';
 import { getProfile } from '@/lib/meta/profile';
 import { getLevelForXP, getXPForNextLevel, MAX_LEVEL } from '@/lib/meta/xp';
 import { PLAYER_TOKENS, getAvailableTokens } from '@/lib/meta/cosmetics';
 
 const PLAYER_COLORS = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#A78BFA'];
 const DEFAULT_ICONS = ['🚀', '⭐', '💎', '🍀'];
+const AI_NAMES: Record<AIPersonality, string[]> = {
+  cautious: ['Cautious Carl', 'Careful Casey', 'Steady Sam', 'Prudent Pat'],
+  aggressive: ['Aggressive Alice', 'Bold Blake', 'Risky Riley', 'Tycoon Taylor'],
+  random: ['Random Randy', 'Wildcard Wren', 'Chaos Charlie', 'Lucky Logan'],
+};
+
+function randomAIName(personality: AIPersonality): string {
+  const names = AI_NAMES[personality];
+  return names[Math.floor(Math.random() * names.length)];
+}
 
 interface ModeInfo {
   id: GameMode;
@@ -62,14 +72,18 @@ const MODES: ModeInfo[] = [
 ];
 
 interface LobbyScreenProps {
-  onStart: (names: string[], config?: Partial<GameConfig>, customIcons?: string[]) => void;
+  onStart: (names: string[], config?: Partial<GameConfig>, customIcons?: string[], aiPlayers?: AIPlayerConfig[]) => void;
   onShowProfile: () => void;
   onShowAchievements: () => void;
+  onShowMultiplayer: () => void;
 }
 
-export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements }: LobbyScreenProps) {
+export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements, onShowMultiplayer }: LobbyScreenProps) {
   const [playerCount, setPlayerCount] = useState(2);
   const [names, setNames] = useState(['', '', '', '']);
+  const [aiEnabled, setAiEnabled] = useState([false, false, false, false]);
+  const [aiPersonalities, setAiPersonalities] = useState<AIPersonality[]>(['cautious', 'aggressive', 'random', 'cautious']);
+  const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>('medium');
   const [selectedMode, setSelectedMode] = useState<GameMode>('classic');
   const [playerLevel, setPlayerLevel] = useState(1);
   const [selectedToken, setSelectedToken] = useState('🚀');
@@ -99,15 +113,21 @@ export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements
   }, []);
 
   const handleStart = () => {
-    const finalNames = names.slice(0, playerCount).map((n: string, i: number) =>
-      n.trim() || `Player ${i + 1}`
-    );
+    const finalNames = names.slice(0, playerCount).map((n: string, i: number) => {
+      if (n.trim()) return n.trim();
+      if (aiEnabled[i]) {
+        const labels: Record<AIPersonality, string> = { cautious: 'Cautious Carl', aggressive: 'Aggressive Alice', random: 'Random Randy' };
+        return labels[aiPersonalities[i]];
+      }
+      return `Player ${i + 1}`;
+    });
+    const aiPlayers = aiEnabled.slice(0, playerCount).map((enabled, i) => ({ enabled, personality: aiPersonalities[i] }));
     // Build custom icons array — player 1 uses their selected token, others use defaults
     const icons = [selectedToken, ...DEFAULT_ICONS.slice(1)];
     if (selectedMode === 'custom') {
-      onStart(finalNames, { ...customConfig, mode: 'custom' }, icons);
+      onStart(finalNames, { ...customConfig, mode: 'custom', aiDifficulty }, icons, aiPlayers);
     } else {
-      onStart(finalNames, { mode: selectedMode }, icons);
+      onStart(finalNames, { mode: selectedMode, aiDifficulty }, icons, aiPlayers);
     }
   };
 
@@ -163,6 +183,9 @@ export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements
           </button>
           <button onClick={onShowAchievements} className="text-xs text-gray-400 hover:text-yellow-400 flex items-center gap-1 transition-colors">
             <Award className="w-3.5 h-3.5" /> Achievements
+          </button>
+          <button onClick={onShowMultiplayer} className="text-xs text-gray-400 hover:text-cyan-400 flex items-center gap-1 transition-colors">
+            <Gamepad2 className="w-3.5 h-3.5" /> Online
           </button>
         </div>
       </motion.div>
@@ -224,8 +247,6 @@ export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements
                   onChange={(v: number) => setCustomConfig({ ...customConfig, startingMoney: v })} icon={<Coins className="w-3 h-3" />} />
                 <ConfigSlider label="Pass Start Bonus" value={customConfig.passStartBonus} min={50} max={500} step={25}
                   onChange={(v: number) => setCustomConfig({ ...customConfig, passStartBonus: v })} icon={<Coins className="w-3 h-3" />} />
-                <ConfigSlider label="Shop Interval" value={customConfig.charmShopInterval} min={2} max={10} step={1}
-                  onChange={(v: number) => setCustomConfig({ ...customConfig, charmShopInterval: v })} icon={<Sparkles className="w-3 h-3" />} />
                 <ConfigSlider label="Shop Size" value={customConfig.charmShopSize} min={2} max={8} step={1}
                   onChange={(v: number) => setCustomConfig({ ...customConfig, charmShopSize: v })} icon={<Sparkles className="w-3 h-3" />} />
                 <ConfigSlider label="Charm Slots" value={customConfig.maxCharmSlots} min={1} max={6} step={1}
@@ -279,6 +300,22 @@ export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements
           </div>
         </div>
 
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-gray-800 bg-gray-950/40 p-3">
+          <div>
+            <div className="text-sm font-medium text-gray-300">AI difficulty</div>
+            <div className="text-[10px] text-gray-500">Choose how strongly computer players evaluate decisions.</div>
+          </div>
+          <select
+            value={aiDifficulty}
+            onChange={(e) => setAiDifficulty(e.target.value as AIDifficulty)}
+            className="rounded-md border border-gray-700 bg-gray-800 px-2 py-1.5 text-xs text-white"
+          >
+            <option value="easy">Easy</option>
+            <option value="medium">Medium</option>
+            <option value="hard">Hard</option>
+          </select>
+        </div>
+
         {/* Player names */}
         <div className="space-y-3">
           {Array.from({ length: playerCount }).map((_: any, i: number) => (
@@ -295,16 +332,53 @@ export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements
               >
                 {i === 0 ? selectedToken : DEFAULT_ICONS[i]}
               </div>
-              <Input
-                placeholder={`Player ${i + 1}`}
+                <Input
+                  placeholder={`Player ${i + 1}`}
                 value={names[i] ?? ''}
                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
                   const newNames = [...names];
                   newNames[i] = e.target.value;
                   setNames(newNames);
                 }}
-                className="bg-gray-800/50 border-gray-700 text-white placeholder:text-gray-500"
-              />
+                  className="bg-gray-800/50 border-gray-700 text-white placeholder:text-gray-500"
+                />
+                <label className="flex shrink-0 items-center gap-1.5 text-xs text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={aiEnabled[i]}
+                    onChange={(e) => {
+                      const next = [...aiEnabled];
+                      next[i] = e.target.checked;
+                      setAiEnabled(next);
+                      if (e.target.checked) {
+                        const nextNames = [...names];
+                        nextNames[i] = randomAIName(aiPersonalities[i]);
+                        setNames(nextNames);
+                      }
+                    }}
+                    className="rounded border-gray-600 bg-gray-800 text-emerald-500 focus:ring-emerald-500"
+                  />
+                  <Bot className="h-3.5 w-3.5 text-cyan-400" /> AI
+                </label>
+                {aiEnabled[i] && (
+                  <select
+                    value={aiPersonalities[i]}
+                    onChange={(e) => {
+                      const next = [...aiPersonalities];
+                      const personality = e.target.value as AIPersonality;
+                      next[i] = personality;
+                      setAiPersonalities(next);
+                      const nextNames = [...names];
+                      nextNames[i] = randomAIName(personality);
+                      setNames(nextNames);
+                    }}
+                    className="w-28 rounded-md border border-gray-700 bg-gray-800 px-2 py-2 text-xs text-white"
+                  >
+                    <option value="cautious">Cautious</option>
+                    <option value="aggressive">Aggressive</option>
+                    <option value="random">Random</option>
+                  </select>
+                )}
             </motion.div>
           ))}
         </div>

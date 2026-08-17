@@ -13,6 +13,7 @@ export type HookEvent =
   | 'ON_RECEIVE_RENT'
   | 'ON_BUY_PROPERTY'
   | 'ON_SELL_PROPERTY'
+  | 'ON_MORTGAGE_PROPERTY'
   | 'ON_UPGRADE_PROPERTY'
   | 'ON_TRADE'
   | 'ON_TAX'

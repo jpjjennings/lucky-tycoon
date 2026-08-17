@@ -1,0 +1,40 @@
+#!/bin/sh
+
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PROJECT_DIR="$ROOT_DIR/nextjs_space"
+stopped=0
+
+stop_pid_if_project_server() {
+  pid=$1
+  command=$(ps -p "$pid" -o command= 2>/dev/null || true)
+  case "$command" in
+    *"$PROJECT_DIR"*next*|*"$PROJECT_DIR"*multiplayer-server*|*"$PROJECT_DIR"*npm*run*dev*)
+      printf 'Stopping PID %s\n' "$pid"
+      kill "$pid" 2>/dev/null || true
+      stopped=1
+      ;;
+  esac
+}
+
+for port in 3000 3001 3100; do
+  pids=$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+  for pid in $pids; do
+    stop_pid_if_project_server "$pid"
+  done
+done
+
+processes=$(ps -axo pid=,command= 2>/dev/null || true)
+while IFS= read -r process; do
+  pid=${process%% *}
+  [ -n "$pid" ] || continue
+  [ "$pid" = "$$" ] && continue
+  stop_pid_if_project_server "$pid"
+done <<EOF
+$processes
+EOF
+
+if [ "$stopped" -eq 0 ]; then
+  printf 'No Lucky Tycoon development servers were running.\n'
+fi

@@ -4,6 +4,7 @@ import { BOARD_SPACES } from '@/lib/engine/board-data';
 import { TIER_NAMES } from '@/lib/engine/types';
 import { motion } from 'framer-motion';
 import { useGameStore, AnimationState } from '@/lib/store';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface BoardGridProps {
   state: GameState;
@@ -16,7 +17,7 @@ export default function BoardGrid({ state }: BoardGridProps) {
   if (!state) return null;
 
   const getGridPosition = (index: number): { row: number; col: number } => {
-    if (index <= 10) return { row: 10, col: index };
+    if (index <= 10) return { row: 10, col: 10 - index };
     if (index <= 19) return { row: 10 - (index - 10), col: 0 };
     if (index <= 30) return { row: 0, col: index - 20 };
     return { row: index - 30, col: 10 };
@@ -32,8 +33,11 @@ export default function BoardGrid({ state }: BoardGridProps) {
   const playersOnSpace = (spaceIndex: number): (Player & { isAnimToken?: boolean })[] => {
     const realPlayers = (state?.players ?? []).filter((p: Player) => {
       if (!p?.isAlive) return false;
-      // If this player is being animated, hide them from their real final position
-      // and show them at the animated position instead
+      // Keep the token at its starting space until the dice result is confirmed.
+      if (p.id === anim.movingPlayerId && anim.phase === 'rolling') {
+        return anim.startPosition === spaceIndex;
+      }
+      // Once movement starts, hide the final state position and show the animated path.
       if (isMoving && p.id === anim.movingPlayerId) {
         return animatedPos === spaceIndex;
       }
@@ -48,7 +52,8 @@ export default function BoardGrid({ state }: BoardGridProps) {
   };
 
   return (
-    <div className="inline-grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(11, minmax(0, 1fr))', gridTemplateRows: 'repeat(11, minmax(0, 1fr))' }}>
+    <TooltipProvider delayDuration={150}>
+      <div className="game-board-grid inline-grid gap-[2px]" style={{ gridTemplateColumns: 'repeat(11, minmax(0, 1fr))', gridTemplateRows: 'repeat(11, minmax(0, 1fr))' }}>
       {/* Center area */}
       <div
         className="bg-gray-900/60 rounded-lg flex flex-col items-center justify-center p-2 border border-gray-800/50"
@@ -70,23 +75,21 @@ export default function BoardGrid({ state }: BoardGridProps) {
         const isOwned = prop?.ownerId != null;
         const owner = isOwned ? (state?.players ?? []).find((p: Player) => p.id === prop?.ownerId) : null;
         const tier = prop?.tier ?? 0;
-        const isCorner = [0, 10, 20, 30].includes(idx);
 
-        return (
-          <div
-            key={idx}
-            className={`relative flex flex-col items-center justify-between p-[3px] rounded border transition-all ${
-              isCorner ? 'w-[70px] h-[70px] md:w-[80px] md:h-[80px]' : 'w-[60px] h-[70px] md:w-[66px] md:h-[80px]'
-            } ${
-              players.length > 0 ? 'ring-1 ring-yellow-500/50' : ''
-            }`}
-            style={{
-              gridRow: pos.row + 1,
-              gridColumn: pos.col + 1,
-              backgroundColor: space.color ? `${space.color}15` : 'rgba(30,30,40,0.8)',
-              borderColor: space.color ? `${space.color}40` : 'rgba(55,55,70,0.5)',
-            }}
-          >
+         return (
+          <Tooltip key={idx}>
+            <TooltipTrigger asChild>
+              <div
+                className={`relative flex h-full w-full min-h-0 min-w-0 flex-col items-center justify-between p-[3px] rounded border transition-all ${
+                  players.length > 0 ? 'ring-1 ring-yellow-500/50' : ''
+                }`}
+                style={{
+                  gridRow: pos.row + 1,
+                  gridColumn: pos.col + 1,
+                  backgroundColor: space.color ? `${space.color}15` : 'rgba(30,30,40,0.8)',
+                  borderColor: space.color ? `${space.color}40` : 'rgba(55,55,70,0.5)',
+                }}
+              >
             {/* Color stripe for property group */}
             {space.color && (
               <div
@@ -154,10 +157,70 @@ export default function BoardGrid({ state }: BoardGridProps) {
                 })}
               </div>
             )}
-          </div>
+              </div>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="z-50 w-56 border-gray-700 bg-gray-950 p-3 text-gray-100 shadow-xl">
+              <div className="space-y-2">
+                <div>
+                  <div className="font-display font-bold" style={{ color: space.color ?? '#facc15' }}>{space.name}</div>
+                  <div className="text-[10px] uppercase tracking-wider text-gray-500">{space.type.replace(/_/g, ' ')}</div>
+                </div>
+
+                {space.price != null && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">Purchase price</span>
+                    <span className="font-mono font-bold text-yellow-400">{space.price}c</span>
+                  </div>
+                )}
+
+                {prop?.ownerId && owner && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-gray-400">Owner</span>
+                    <span className="font-medium" style={{ color: owner.color }}>{owner.name}</span>
+                  </div>
+                )}
+
+                {space.type === 'UTILITY' ? (
+                  <div className="border-t border-gray-800 pt-2 text-xs">
+                    <div className="mb-1 text-gray-400">Rent</div>
+                    <div className="text-cyan-300">Dice total × 4</div>
+                    <div className="text-[10px] text-gray-500">× 10 when both utilities are owned</div>
+                  </div>
+                ) : space.rentPerTier?.some((rent: number) => rent > 0) ? (
+                  <div className="border-t border-gray-800 pt-2 text-xs">
+                    <div className="mb-1 text-gray-400">Rent</div>
+                    <div className="space-y-0.5">
+                      {space.rentPerTier
+                        .filter((_: number, tier: number) => space.type !== 'TRANSIT' || tier < 4)
+                        .map((rent: number, tier: number) => (
+                        <div key={tier} className="flex items-center justify-between">
+                          <span className="text-gray-500">
+                            {space.type === 'TRANSIT'
+                              ? `${tier + 1} station${tier === 0 ? '' : 's'}`
+                              : TIER_NAMES[tier] ?? `Tier ${tier}`}
+                          </span>
+                          <span className="font-mono text-emerald-300">{rent}c</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : space.taxAmount != null ? (
+                  <div className="flex items-center justify-between border-t border-gray-800 pt-2 text-xs">
+                    <span className="text-gray-400">Tax</span>
+                    <span className="font-mono text-red-400">{space.taxAmount}c</span>
+                  </div>
+                ) : null}
+
+                {prop && prop.tier > 0 && (
+                  <div className="text-[10px] text-yellow-400">Current tier: {TIER_NAMES[prop.tier] ?? `Tier ${prop.tier}`}</div>
+                )}
+              </div>
+            </TooltipContent>
+          </Tooltip>
         );
       })}
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }
 

@@ -120,7 +120,8 @@ export function calculateNetWorth(state: GameState, player: Player): number {
   const props = (state?.properties ?? []).filter((p: Property) => p.ownerId === player?.id);
   for (const prop of props) {
     const space = getSpace(prop.spaceIndex);
-    worth += space?.price ?? 0;
+    const price = space?.price ?? 0;
+    worth += prop.mortgaged ? Math.floor(price / 2) : price;
     worth += (prop.tier ?? 0) * (space?.upgradeCost ?? 0);
   }
   for (const charm of (player?.charms ?? [])) {

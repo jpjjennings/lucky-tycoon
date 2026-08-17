@@ -3,7 +3,7 @@
 // Zustand Store — wraps the game reducer
 // ============================================
 import { create } from 'zustand';
-import { GameState, GameAction, GameConfig } from './engine/types';
+import { AIPlayerConfig, GameState, GameAction, GameConfig } from './engine/types';
 import { gameReducer, createInitialState, DEFAULT_CONFIG, MODE_PRESETS } from './engine/reducer';
 
 export type AnimPhase = 'idle' | 'rolling' | 'moving';
@@ -14,6 +14,7 @@ export interface AnimationState {
   movePath: number[];      // space indices the token walks through
   moveStep: number;        // current index into movePath being shown
   movingPlayerId: string | null;
+  startPosition: number | null;
   playerColor: string | null;
   playerIcon: string | null;
 }
@@ -24,6 +25,7 @@ const ANIM_IDLE: AnimationState = {
   movePath: [],
   moveStep: -1,
   movingPlayerId: null,
+  startPosition: null,
   playerColor: null,
   playerIcon: null,
 };
@@ -31,7 +33,7 @@ const ANIM_IDLE: AnimationState = {
 interface GameStore {
   state: GameState | null;
   anim: AnimationState;
-  startGame: (playerNames: string[], config?: Partial<GameConfig>, customIcons?: string[]) => void;
+  startGame: (playerNames: string[], config?: Partial<GameConfig>, customIcons?: string[], aiPlayers?: AIPlayerConfig[]) => void;
   dispatch: (action: GameAction) => void;
   resetGame: () => void;
   rollWithAnimation: () => void;
@@ -44,12 +46,12 @@ export const useGameStore = create<GameStore>((set: any, get: any) => ({
   state: null,
   anim: { ...ANIM_IDLE },
 
-  startGame: (playerNames: string[], config?: Partial<GameConfig>, customIcons?: string[]) => {
+  startGame: (playerNames: string[], config?: Partial<GameConfig>, customIcons?: string[], aiPlayers?: AIPlayerConfig[]) => {
     // Merge mode preset with any custom overrides
     const mode = config?.mode ?? 'classic';
     const preset = MODE_PRESETS[mode] ?? {};
     const merged = { ...preset, ...config };
-    const initial = createInitialState(playerNames, undefined, merged, customIcons);
+    const initial = createInitialState(playerNames, undefined, merged, customIcons, aiPlayers);
     set({ state: initial, anim: { ...ANIM_IDLE } });
     try { localStorage.setItem('lucky-tycoon-save', JSON.stringify(initial)); } catch {}
   },
@@ -124,6 +126,7 @@ export const useGameStore = create<GameStore>((set: any, get: any) => ({
         movePath: path,
         moveStep: -1, // not moving yet
         movingPlayerId: playerId,
+        startPosition: prevPos,
         playerColor: prevColor,
         playerIcon: prevIcon,
       },

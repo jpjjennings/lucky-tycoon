@@ -20,7 +20,7 @@ export interface CharmModifiers {
   bankruptcySave: boolean;
   rentRebatePercent: number;       // % of rent paid returned from bank
   landlordGrinBonus: number;       // flat bonus on receiving rent
-  sellPropertyBonus: number;       // % extra on selling property
+  mortgageBonus: number;            // % extra cash from mortgages
   upgradeDiscount: number;         // % discount on upgrades
   cheapPropertyRentMult: number;   // multiplier for properties ≤120c
   doubleDownActive: boolean;       // doubles all financial events
@@ -50,7 +50,7 @@ export function getDefaultModifiers(): CharmModifiers {
     bankruptcySave: false,
     rentRebatePercent: 0,
     landlordGrinBonus: 0,
-    sellPropertyBonus: 0,
+    mortgageBonus: 0,
     upgradeDiscount: 0,
     cheapPropertyRentMult: 1,
     doubleDownActive: false,
@@ -153,7 +153,7 @@ export function computeModifiers(
         mods.taxMultiplier *= 0.5; // simple approach
         break;
       case 'property-flipper':
-        mods.sellPropertyBonus += 0.25 * totalAmp;
+        mods.mortgageBonus += 0.25 * totalAmp;
         break;
       case 'bank-error-charm':
         // handled at turn start in reducer
@@ -300,7 +300,7 @@ export function computeModifiers(
   }
   if (activeSynergies.includes('budget-empire')) {
     mods.cheapPropertyRentMult = Math.max(mods.cheapPropertyRentMult, 4);
-    mods.sellPropertyBonus = Math.max(mods.sellPropertyBonus, 0.5);
+        mods.mortgageBonus = Math.max(mods.mortgageBonus, 0.5);
   }
   if (activeSynergies.includes('tax-ghost')) {
     mods.taxMultiplier = 0;

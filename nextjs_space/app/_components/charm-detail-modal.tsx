@@ -18,6 +18,7 @@ const TRIGGER_LABELS: Record<string, string> = {
   ON_RECEIVE_RENT: 'When you collect rent',
   ON_BUY_PROPERTY: 'When you buy a property',
   ON_SELL_PROPERTY: 'When you sell a property',
+  ON_MORTGAGE_PROPERTY: 'When you mortgage a property',
   ON_UPGRADE_PROPERTY: 'When you upgrade a property',
   ON_TRADE: 'When you complete a trade',
   ON_TAX: 'When you pay tax',

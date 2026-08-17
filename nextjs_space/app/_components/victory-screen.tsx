@@ -10,6 +10,7 @@ import { processEndOfGame, EndOfGameResult } from '@/lib/meta/profile';
 import { ACHIEVEMENTS } from '@/lib/meta/achievements';
 import { getLevelForXP, getXPForNextLevel, LEVEL_THRESHOLDS } from '@/lib/meta/xp';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ResponsiveContainer, BarChart, Bar, CartesianGrid, XAxis, YAxis, Tooltip as ChartTooltip } from 'recharts';
 import { Button } from '@/components/ui/button';
 import { Trophy, Crown, RotateCcw, Coins, Home, Sparkles, Medal, Clock, Users, Star, ChevronUp, Zap } from 'lucide-react';
 
@@ -68,6 +69,10 @@ export default function VictoryScreen({ onPlayAgain }: VictoryScreenProps) {
   );
   const mode = state.config?.mode ?? 'classic';
   const modeColor = getModeColor(mode);
+  const netWorthData = sortedPlayers.map((player: Player) => ({
+    name: player.name,
+    netWorth: calculateNetWorth(state, player),
+  }));
 
   return (
     <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center p-4 relative overflow-hidden">
@@ -128,6 +133,22 @@ export default function VictoryScreen({ onPlayAgain }: VictoryScreenProps) {
             transition={{ delay: 0.5 }}
             className="w-full max-w-lg space-y-3 relative z-10"
           >
+            <div className="h-56 rounded-xl border border-gray-800 bg-gray-900/60 p-3">
+              <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">Net Worth Comparison</div>
+              <ResponsiveContainer width="100%" height="88%">
+                <BarChart data={netWorthData} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.45} />
+                  <XAxis dataKey="name" tick={{ fill: '#9ca3af', fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: '#6b7280', fontSize: 10 }} axisLine={false} tickLine={false} width={42} />
+                  <ChartTooltip
+                    cursor={{ fill: 'rgba(234, 179, 8, 0.08)' }}
+                    contentStyle={{ background: '#111827', border: '1px solid #374151', borderRadius: 8, color: '#f9fafb' }}
+                    formatter={(value: number) => [`${value.toLocaleString('en-US')} coins`, 'Net Worth']}
+                  />
+                  <Bar dataKey="netWorth" fill="#facc15" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
             {sortedPlayers.map((player: Player, rank: number) => {
               const netWorth = calculateNetWorth(state, player);
               const ownedProps = (state?.properties ?? []).filter((p: Property) => p.ownerId === player?.id);

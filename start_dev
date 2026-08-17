@@ -1,0 +1,75 @@
+#!/bin/sh
+
+set -eu
+
+ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+PORT=${DEV_PORT:-3000}
+URL=${DEV_URL:-http://localhost:$PORT}
+
+stop_port() {
+  port=$1
+  existing_pids=$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)
+  if [ -n "$existing_pids" ]; then
+    printf 'Stopping existing process(es) on port %s...\n' "$port"
+    for pid in $existing_pids; do
+      kill "$pid" 2>/dev/null || true
+    done
+
+    attempts=0
+    while lsof -tiTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; do
+      attempts=$((attempts + 1))
+      if [ "$attempts" -ge 10 ]; then
+        printf 'Unable to free port %s.\n' "$port" >&2
+        exit 1
+      fi
+      sleep 1
+    done
+  fi
+}
+
+stop_port "$PORT"
+if [ "$PORT" != "3001" ]; then
+  stop_port 3001
+fi
+
+cd "$ROOT_DIR/nextjs_space"
+
+if [ ! -x node_modules/.bin/next ]; then
+  printf 'Installing project dependencies...\n'
+  npm install --legacy-peer-deps
+fi
+
+npm run dev &
+SERVER_PID=$!
+npm run multiplayer:server &
+MULTIPLAYER_PID=$!
+
+cleanup() {
+  kill "$SERVER_PID" 2>/dev/null || true
+  kill "$MULTIPLAYER_PID" 2>/dev/null || true
+}
+trap cleanup INT TERM EXIT
+
+printf 'Starting the development server at %s\n' "$URL"
+printf 'Starting the multiplayer server at ws://localhost:3001\n'
+until curl --silent --fail --output /dev/null "$URL"; do
+  if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    wait "$SERVER_PID"
+  fi
+  sleep 1
+done
+
+until curl --silent --fail --output /dev/null "http://localhost:3001/health"; do
+  if ! kill -0 "$MULTIPLAYER_PID" 2>/dev/null; then
+    wait "$MULTIPLAYER_PID"
+  fi
+  sleep 1
+done
+
+case "$(uname -s)" in
+  Darwin) open "$URL" ;;
+  Linux) xdg-open "$URL" >/dev/null 2>&1 || true ;;
+  *) printf 'Open this URL in your browser: %s\n' "$URL" ;;
+esac
+
+wait "$SERVER_PID"

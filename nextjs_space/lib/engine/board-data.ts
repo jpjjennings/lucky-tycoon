@@ -56,6 +56,7 @@ export function createInitialProperties(): Property[] {
       spaceIndex: s.index,
       ownerId: null,
       tier: 0,
+      mortgaged: false,
     }));
 }
 

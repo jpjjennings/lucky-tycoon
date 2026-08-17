@@ -3,7 +3,7 @@
 // ============================================
 import {
   GameState, GameAction, Player, GameConfig, Property,
-  TradeOffer, CharmShopState, OwnedCharm,
+  TradeOffer, CharmShopState, OwnedCharm, CHARM_SHOP_UNLOCK_ROUND, AIPlayerConfig,
 } from './types';
 import { BOARD_SPACES, createInitialProperties } from './board-data';
 import { ALL_CHARMS, getCharmDef, SYNERGIES, getCharmUpgradeCost } from './charms-data';
@@ -28,6 +28,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   charmPermadeath: false,
   acceleratedEconomy: false,
   eventFrequency: 6,
+  aiDifficulty: 'medium',
 };
 
 export const MODE_PRESETS: Record<string, Partial<GameConfig>> = {
@@ -62,7 +63,8 @@ export function createInitialState(
   playerNames: string[],
   seed?: number,
   config?: Partial<GameConfig>,
-  customIcons?: string[]
+  customIcons?: string[],
+  aiPlayers?: AIPlayerConfig[]
 ): GameState {
   const cfg = { ...DEFAULT_CONFIG, ...(config ?? {}) };
   const gameSeed = seed ?? Math.floor(Math.random() * 2147483647);
@@ -82,6 +84,11 @@ export function createInitialState(
     jailFreeCharms: 0,
     doublesCount: 0,
     passedStartThisTurn: false,
+    previousPosition: 0,
+    activeDiceBonus: 0,
+    activeRentShield: false,
+    isAI: aiPlayers?.[i]?.enabled ?? false,
+    aiPersonality: aiPlayers?.[i]?.personality ?? 'cautious',
   }));
 
   return {
@@ -102,6 +109,9 @@ export function createInitialState(
     activeEvent: null,
     tradeOffer: null,
     charmShop: null,
+    charmShopBonus: null,
+    shopOpenedThisTurn: false,
+    tradeProposedThisTurn: false,
     riskChoice: null,
     winner: null,
     seed: gameSeed,
@@ -109,6 +119,8 @@ export function createInitialState(
     turnsSinceLastShop: 0,
     turnsSinceLastEvent: 0,
     usedEventIds: [],
+    bankruptcyDebt: 0,
+    bankruptcyCreditorId: null,
   };
 }
 
@@ -122,14 +134,18 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return handleBuyProperty(state);
     case 'UPGRADE_PROPERTY':
       return handleUpgradeProperty(state, action.spaceIndex);
-    case 'SELL_PROPERTY':
-      return handleSellProperty(state, action.spaceIndex);
+    case 'MORTGAGE_PROPERTY':
+      return handleMortgageProperty(state, action.spaceIndex);
+    case 'UNMORTGAGE_PROPERTY':
+      return handleUnmortgageProperty(state, action.spaceIndex);
     case 'SELL_UPGRADE':
       return handleSellUpgrade(state, action.spaceIndex);
     case 'END_TURN':
       return handleEndTurn(state);
     case 'PROPOSE_TRADE':
       return handleProposeTrade(state, action.offer);
+    case 'COUNTER_TRADE':
+      return handleCounterTrade(state, action.offer);
     case 'RESPOND_TRADE':
       return handleRespondTrade(state, action.accept);
     case 'BUY_CHARM':
@@ -141,7 +157,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'REROLL_SHOP':
       return handleRerollShop(state);
     case 'CLOSE_SHOP':
-      return { ...state, charmShop: null, phase: 'PLAYER_ACTION' };
+      return {
+        ...state,
+        charmShop: null,
+        phase: state.shopReturnPhase ?? 'PLAYER_ACTION',
+        shopReturnPhase: undefined,
+      };
+    case 'OPEN_SHOP':
+      return handleOpenCharmShop(state);
     case 'LOCK_SHOP_ITEM':
       return handleLockShopItem(state, action.charmId);
     case 'RESOLVE_EVENT':
@@ -158,6 +181,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, phase: 'PLAYER_ACTION', tradeOffer: null };
     case 'ACTIVATE_CHARM':
       return handleActivateCharm(state, action.instanceId);
+    case 'PLAYER_LEFT':
+      return handlePlayerLeft(state, action.playerId);
     case 'CHECK_VICTORY':
       return checkVictory(state);
     default:
@@ -177,7 +202,7 @@ function handleRollDice(state: GameState): GameState {
   if (mods.turnIncome !== 0) {
     s.players = updatePlayer(s, player.id, { money: player.money + mods.turnIncome });
     if (mods.turnIncome > 0) {
-      s.eventLog = addLogEntry(s.eventLog, {
+           s.eventLog = addLogEntry(s.eventLog, {
         type: 'CHARM_EFFECT',
         message: `${player.name} earns ${mods.turnIncome} coins from charms.`,
         emoji: '🪙',
@@ -263,12 +288,16 @@ function handleRollDice(state: GameState): GameState {
   s.rngState = diceRoll.nextState;
   s.diceResult = diceRoll.dice;
 
-  const total = diceRoll.dice[0] + diceRoll.dice[1] + diceMods.diceBonus;
+  const activeDiceBonus = currentPlayer.activeDiceBonus ?? 0;
+  if (activeDiceBonus > 0) {
+    s.players = updatePlayer(s, currentPlayer.id, { activeDiceBonus: 0 });
+  }
+  const total = diceRoll.dice[0] + diceRoll.dice[1] + diceMods.diceBonus + activeDiceBonus;
   const isDoubles = diceRoll.dice[0] === diceRoll.dice[1];
 
   s.eventLog = addLogEntry(s.eventLog, {
     type: 'DICE',
-    message: `${currentPlayer.name} rolled ${diceRoll.dice[0]} + ${diceRoll.dice[1]}${diceMods.diceBonus ? ` (+${diceMods.diceBonus})` : ''} = ${total}`,
+    message: `${currentPlayer.name} rolled ${diceRoll.dice[0]} + ${diceRoll.dice[1]}${diceMods.diceBonus || activeDiceBonus ? ` (+${diceMods.diceBonus + activeDiceBonus})` : ''} = ${total}`,
     emoji: '🎲',
     playerId: currentPlayer.id,
   });
@@ -365,6 +394,7 @@ function movePlayer(state: GameState, spaces: number): GameState {
 
   s.players = updatePlayer(s, player.id, {
     position: newPos,
+    previousPosition: oldPos,
     money: newMoney,
     passedStartThisTurn: passedStart,
   });
@@ -402,7 +432,7 @@ function resolveSpace(state: GameState, spaceIndex: number): GameState {
         // Unowned — player can buy
         s.phase = 'RESOLVE_SPACE';
         return s;
-      } else if (prop.ownerId !== player.id) {
+      } else if (prop.ownerId !== player.id && !prop.mortgaged) {
         // Owned by someone else — pay rent
         const owner = (s.players ?? []).find((p: Player) => p.id === prop.ownerId);
         if (!owner?.isAlive || (owner.turnsInJail ?? 0) > 0) {
@@ -412,7 +442,7 @@ function resolveSpace(state: GameState, spaceIndex: number): GameState {
         const ownerMods = computeModifiers(owner, s, 'ON_RECEIVE_RENT');
         const payerMods = computeModifiers(player, s, 'ON_PAY_RENT');
 
-        if (payerMods.blockRent) {
+        if (payerMods.blockRent || player.activeRentShield) {
           // Shield charm blocks rent
           s.eventLog = addLogEntry(s.eventLog, {
             type: 'CHARM_EFFECT',
@@ -425,7 +455,7 @@ function resolveSpace(state: GameState, spaceIndex: number): GameState {
           const updatedCharms = (player.charms ?? []).map((c: OwnedCharm) =>
             c.definitionId === 'shield-charm' ? { ...c, activatedThisTurn: true } : c
           );
-          s.players = updatePlayer(s, player.id, { charms: updatedCharms });
+          s.players = updatePlayer(s, player.id, { charms: updatedCharms, activeRentShield: false });
           s.phase = 'PLAYER_ACTION';
           return s;
         }
@@ -484,9 +514,11 @@ function resolveSpace(state: GameState, spaceIndex: number): GameState {
             message: `${player.name} owes ${rent} coins to ${owner.name} but can't afford it!`,
             emoji: '🚨',
             playerId: player.id,
-            highlight: true,
-          });
-          s.phase = 'BANKRUPTCY';
+             highlight: true,
+           });
+           s.bankruptcyDebt = rent;
+           s.bankruptcyCreditorId = owner.id;
+           s.phase = 'BANKRUPTCY';
           return s;
         }
 
@@ -597,6 +629,8 @@ function resolveSpace(state: GameState, spaceIndex: number): GameState {
       const mods = computeModifiers(player, s, 'ON_TAX');
       let tax = Math.floor((space.taxAmount ?? 0) * mods.taxMultiplier);
       if ((player.money ?? 0) < tax) {
+        s.bankruptcyDebt = tax;
+        s.bankruptcyCreditorId = null;
         s.phase = 'BANKRUPTCY';
         return s;
       }
@@ -770,7 +804,7 @@ function handleBuyProperty(state: GameState): GameState {
 
   if ((player.money ?? 0) < price) return s;
 
-  s.properties = updateProperty(s, player.position ?? 0, { ownerId: player.id });
+   s.properties = updateProperty(s, player.position ?? 0, { ownerId: player.id, mortgaged: false });
   s.players = updatePlayer(s, player.id, { money: (player.money ?? 0) - price });
 
   s.eventLog = addLogEntry(s.eventLog, {
@@ -813,7 +847,7 @@ function handleUpgradeProperty(state: GameState, spaceIndex: number): GameState 
   if (!player) return s;
   const space = getSpace(spaceIndex);
   const prop = getProperty(s, spaceIndex);
-  if (!space || !prop || prop.ownerId !== player.id) return s;
+   if (!space || !prop || prop.ownerId !== player.id || prop.mortgaged) return s;
   if (space.type !== 'PROPERTY') return s;
   if ((prop.tier ?? 0) >= 4) return s;
 
@@ -844,40 +878,50 @@ function handleUpgradeProperty(state: GameState, spaceIndex: number): GameState 
   return s;
 }
 
-function handleSellProperty(state: GameState, spaceIndex: number): GameState {
+function handleMortgageProperty(state: GameState, spaceIndex: number): GameState {
   let s = { ...state };
   const player = (s.players ?? [])[s.currentPlayerIndex];
   if (!player) return s;
   const prop = getProperty(s, spaceIndex);
   const space = getSpace(spaceIndex);
-  if (!prop || !space || prop.ownerId !== player.id) return s;
+  if (!prop || !space || prop.ownerId !== player.id || prop.mortgaged || (prop.tier ?? 0) > 0) return s;
 
-  // Golden Handcuffs: cannot sell properties
-  const mods = computeModifiers(player, s, 'PASSIVE');
+   // Golden Handcuffs: cannot mortgage properties
+   const mods = computeModifiers(player, s, 'ON_MORTGAGE_PROPERTY');
   if (mods.cantSellProperties) {
     s.eventLog = addLogEntry(s.eventLog, {
       type: 'CHARM',
-      message: `${player.name} can't sell — Golden Handcuffs prevent property sales!`,
+       message: `${player.name} can't mortgage — Golden Handcuffs prevent property mortgages!`,
       emoji: '🔒',
       playerId: player.id,
     });
     return s;
   }
 
-  // Sell at half price + half upgrade value, then apply property-flipper bonus
-  let value = Math.floor((space.price ?? 0) / 2) + Math.floor((prop.tier ?? 0) * (space.upgradeCost ?? 0) / 2);
-  if (mods.sellPropertyBonus > 0) {
-    value = Math.floor(value * (1 + mods.sellPropertyBonus));
-  }
-  s.properties = updateProperty(s, spaceIndex, { ownerId: null, tier: 0 });
+   const value = Math.floor((space.price ?? 0) / 2 * (1 + mods.mortgageBonus));
+  s.properties = updateProperty(s, spaceIndex, { mortgaged: true });
   s.players = updatePlayer(s, player.id, { money: (player.money ?? 0) + value });
 
   s.eventLog = addLogEntry(s.eventLog, {
     type: 'SELL',
-    message: `${player.name} sold ${space.name} for ${value} coins.`,
-    emoji: '💲',
+    message: `${player.name} mortgaged ${space.name} for ${value} coins.`,
+    emoji: '🏦',
     playerId: player.id,
   });
+  return s;
+}
+
+function handleUnmortgageProperty(state: GameState, spaceIndex: number): GameState {
+  let s = { ...state };
+  const player = (s.players ?? [])[s.currentPlayerIndex];
+  const prop = getProperty(s, spaceIndex);
+  const space = getSpace(spaceIndex);
+  if (!player || !prop || !space || prop.ownerId !== player.id || !prop.mortgaged) return s;
+  const cost = Math.ceil((space.price ?? 0) * 0.55);
+  if (player.money < cost) return s;
+  s.properties = updateProperty(s, spaceIndex, { mortgaged: false });
+  s.players = updatePlayer(s, player.id, { money: player.money - cost });
+  s.eventLog = addLogEntry(s.eventLog, { type: 'SYSTEM', message: `${player.name} unmortgaged ${space.name} for ${cost} coins.`, emoji: '🔓', playerId: player.id });
   return s;
 }
 
@@ -903,11 +947,34 @@ function handleSellUpgrade(state: GameState, spaceIndex: number): GameState {
 }
 
 function handleEndTurn(state: GameState): GameState {
+  if (state.phase === 'BANKRUPTCY') {
+    const player = (state.players ?? [])[state.currentPlayerIndex];
+    const debt = state.bankruptcyDebt ?? 0;
+    if (!player || (player.money ?? 0) < debt) return state;
+
+    let settled = { ...state };
+    const creditorId = state.bankruptcyCreditorId;
+    if (creditorId && debt > 0) {
+      settled.players = (settled.players ?? []).map((p: Player) =>
+        p.id === creditorId ? { ...p, money: (p.money ?? 0) + debt } : p
+      );
+    }
+    settled.players = updatePlayer(settled, player.id, { money: (player.money ?? 0) - debt });
+    settled.bankruptcyDebt = 0;
+    settled.bankruptcyCreditorId = null;
+    settled.phase = 'PLAYER_ACTION';
+    settled.eventLog = addLogEntry(settled.eventLog, {
+      type: 'SYSTEM',
+      message: `${player.name} paid ${debt} coins and cleared the debt.`,
+      emoji: '✅',
+      playerId: player.id,
+    });
+    return settled;
+  }
+
   let s = { ...state };
   const player = (s.players ?? [])[s.currentPlayerIndex];
 
-  // Check charm shop cadence
-  s.turnsSinceLastShop = (s.turnsSinceLastShop ?? 0) + 1;
   s.turnsSinceLastEvent = (s.turnsSinceLastEvent ?? 0) + 1;
   s.turnCount = (s.turnCount ?? 0) + 1;
 
@@ -928,20 +995,16 @@ function handleEndTurn(state: GameState): GameState {
   }
 
   s.currentPlayerIndex = nextIdx;
+  s.shopOpenedThisTurn = false;
+  s.tradeProposedThisTurn = false;
   s.diceResult = null;
   s.phase = 'ROLL_DICE';
 
   const nextPlayer = (s.players ?? [])[nextIdx];
 
-  // Check if charm shop should open
-  if ((s.turnsSinceLastShop ?? 0) >= (s.config?.charmShopInterval ?? 4)) {
-    s = openCharmShop(s);
-    s.turnsSinceLastShop = 0;
-  }
-
   // Check if random event should fire (based on eventFrequency)
   const freq = s.config?.eventFrequency ?? 6;
-  if ((s.turnsSinceLastEvent ?? 0) >= freq && s.phase !== 'CHARM_SHOP') {
+  if ((s.turnsSinceLastEvent ?? 0) >= freq) {
     s = triggerRandomEvent(s);
     s.turnsSinceLastEvent = 0;
   }
@@ -992,12 +1055,13 @@ function triggerRandomEvent(state: GameState): GameState {
   return s;
 }
 
-function openCharmShop(state: GameState): GameState {
+function openCharmShop(state: GameState, size?: number, rerolls = 1): GameState {
   let s = { ...state };
   const { result: shuffled, nextState: rng } = shuffleArray(ALL_CHARMS, s.rngState);
   s.rngState = rng;
-  const offers = shuffled.slice(0, s.config?.charmShopSize ?? 4);
-  s.charmShop = { offers, rerollsLeft: 1, lockedCharmId: null };
+  const offers = shuffled.slice(0, size ?? s.config?.charmShopSize ?? 4);
+  s.charmShop = { offers, rerollsLeft: rerolls, lockedCharmId: null };
+  s.charmShopBonus = null;
   s.phase = 'CHARM_SHOP';
   s.eventLog = addLogEntry(s.eventLog, {
     type: 'SYSTEM',
@@ -1006,6 +1070,23 @@ function openCharmShop(state: GameState): GameState {
     highlight: true,
   });
   return s;
+}
+
+function handleOpenCharmShop(state: GameState): GameState {
+  if (
+    (state.round ?? 1) < CHARM_SHOP_UNLOCK_ROUND ||
+    state.charmShop ||
+    (state.phase !== 'PLAYER_ACTION' && state.phase !== 'RESOLVE_SPACE')
+  ) {
+    return state;
+  }
+
+  const bonus = state.charmShopBonus;
+  return {
+    ...openCharmShop(state, bonus?.size, bonus?.rerolls ?? 1),
+    shopReturnPhase: state.phase,
+    shopOpenedThisTurn: true,
+  };
 }
 
 function handleBuyCharm(state: GameState, charmId: string): GameState {
@@ -1186,7 +1267,7 @@ function handleResolveEvent(state: GameState): GameState {
           const { value: lostProp, nextState: rng } = pickRandom(ownedProps, s.rngState);
           s.rngState = rng;
           if (lostProp) {
-            s.properties = updateProperty(s, lostProp.spaceIndex, { ownerId: null, tier: 0 });
+            s.properties = updateProperty(s, lostProp.spaceIndex, { ownerId: null, tier: 0, mortgaged: false });
             const lostSpace = getSpace(lostProp.spaceIndex);
             s.eventLog = addLogEntry(s.eventLog, {
               type: 'EVENT',
@@ -1274,19 +1355,15 @@ function handleResolveEvent(state: GameState): GameState {
       break;
     }
     case 'charm-surge': {
-      // Open charm shop with 6 items and 2 rerolls
-      const { result: shuffled, nextState: rng2 } = shuffleArray(ALL_CHARMS, s.rngState);
-      s.rngState = rng2;
-      s.charmShop = { offers: shuffled.slice(0, 6), rerollsLeft: 2, lockedCharmId: null };
-      s.phase = 'CHARM_SHOP';
+      s.charmShopBonus = { size: 6, rerolls: 2 };
       s.eventLog = addLogEntry(s.eventLog, {
         type: 'EVENT',
-        message: `Charm Surge! The shop opens with extra wares!`,
+        message: `Charm Surge! The Charm Shop is available with extra wares.`,
         emoji: '✨',
         highlight: true,
       });
       s.activeEvent = null;
-      return s; // return early — phase is CHARM_SHOP
+      break;
     }
     case 'earthquake': {
       (s.players ?? []).forEach((p: Player) => {
@@ -1381,13 +1458,31 @@ function handlePayJailFine(state: GameState): GameState {
 function handleProposeTrade(state: GameState, offer: Omit<TradeOffer, 'status'>): GameState {
   let s = { ...state };
   if (!isValidTradeOffer(s, offer)) return s;
-  s.tradeOffer = { ...offer, status: 'pending' };
+  s.tradeOffer = { ...offer, status: 'pending', counterCount: 0 };
+  s.tradeProposedThisTurn = true;
+  s.phase = 'TRADING';
   s.eventLog = addLogEntry(s.eventLog, {
     type: 'TRADE',
     message: `${(s.players ?? []).find((p: Player) => p.id === offer.fromPlayerId)?.name ?? 'Someone'} proposed a trade to ${(s.players ?? []).find((p: Player) => p.id === offer.toPlayerId)?.name ?? 'someone'}!`,
     emoji: '🤝',
   });
   return s;
+}
+
+function handleCounterTrade(state: GameState, offer: Omit<TradeOffer, 'status' | 'counterCount'>): GameState {
+  const previous = state.tradeOffer;
+  if (!previous || previous.status !== 'pending' || (previous.counterCount ?? 0) >= 2 || !isValidTradeOffer(state, offer)) return state;
+
+  return {
+    ...state,
+    tradeOffer: { ...offer, status: 'pending', counterCount: (previous.counterCount ?? 0) + 1 },
+    phase: 'TRADING',
+    eventLog: addLogEntry(state.eventLog, {
+      type: 'TRADE',
+      message: `A counter-offer was proposed.`,
+      emoji: '🔁',
+    }),
+  };
 }
 
 function handleRespondTrade(state: GameState, accept: boolean): GameState {
@@ -1504,6 +1599,11 @@ function isValidTradeOffer(state: GameState, offer: Omit<TradeOffer, 'status'> |
   if (giveCharms.some((id) => !(from.charms ?? []).some((charm) => charm.instanceId === id))) return false;
   if (receiveCharms.some((id) => !(to.charms ?? []).some((charm) => charm.instanceId === id))) return false;
 
+  const fromSlots = (state.config?.maxCharmSlots ?? 3) + (computeModifiers(from, state, 'PASSIVE').extraCharmSlots ?? 0);
+  const toSlots = (state.config?.maxCharmSlots ?? 3) + (computeModifiers(to, state, 'PASSIVE').extraCharmSlots ?? 0);
+  if ((from.charms ?? []).length - giveCharms.length + receiveCharms.length > fromSlots) return false;
+  if ((to.charms ?? []).length - receiveCharms.length + giveCharms.length > toSlots) return false;
+
   return true;
 }
 
@@ -1532,16 +1632,22 @@ function handleDeclareBankruptcy(state: GameState): GameState {
       playerId: player.id,
       highlight: true,
     });
+    s.bankruptcyDebt = 0;
+    s.bankruptcyCreditorId = null;
     s.phase = 'PLAYER_ACTION';
     return s;
   }
 
   // Actually bankrupt
   s.players = updatePlayer(s, player.id, { isAlive: false, money: 0, charms: [] });
-  // Return all properties
+  // Transfer remaining properties to the creditor, or return them to the bank
+  // when the debt was owed to the bank (for example, unpaid tax).
+  const creditorId = s.bankruptcyCreditorId;
   s.properties = (s.properties ?? []).map((p: Property) =>
-    p.ownerId === player.id ? { ...p, ownerId: null, tier: 0 } : p
+    p.ownerId === player.id ? { ...p, ownerId: creditorId ?? null, tier: creditorId ? p.tier : 0, mortgaged: creditorId ? p.mortgaged : false } : p
   );
+  s.bankruptcyDebt = 0;
+  s.bankruptcyCreditorId = null;
 
   s.eventLog = addLogEntry(s.eventLog, {
     type: 'BANKRUPTCY',
@@ -1561,8 +1667,87 @@ function handleDeclareBankruptcy(state: GameState): GameState {
 }
 
 function handleActivateCharm(state: GameState, instanceId: string): GameState {
-  // Currently charms are passive; this is a hook for future active charms
+  const player = (state.players ?? [])[state.currentPlayerIndex];
+  const charm = player?.charms?.find((candidate) => candidate.instanceId === instanceId);
+  const def = charm ? getCharmDef(charm.definitionId) : null;
+  if (!player || !charm || !def || def.trigger !== 'ACTIVE' || (charm.usesRemaining ?? 1) <= 0) return state;
+
+  if (def.id === 'time-traveller' && player.previousPosition != null && player.previousPosition !== player.position) {
+    const players = (state.players ?? []).map((candidate) => candidate.id === player.id
+      ? { ...candidate, position: player.previousPosition as number, charms: candidate.charms.map((owned) => owned.instanceId === instanceId ? { ...owned, usesRemaining: 0, activatedThisTurn: true } : owned) }
+      : candidate);
+    return {
+      ...state,
+      players,
+      phase: 'PLAYER_ACTION',
+      eventLog: addLogEntry(state.eventLog, {
+        type: 'CHARM_EFFECT',
+        message: `${player.name} used Time Traveller and returned to their previous space.`,
+        emoji: '⏳',
+        playerId: player.id,
+        highlight: true,
+      }),
+    };
+  }
+
+  if (def.id === 'fortune-flare') {
+    const players = (state.players ?? []).map((candidate) => candidate.id === player.id
+      ? { ...candidate, money: candidate.money + 200, charms: candidate.charms.map((owned) => owned.instanceId === instanceId ? { ...owned, usesRemaining: 0, activatedThisTurn: true } : owned) }
+      : candidate);
+    return {
+      ...state,
+      players,
+      phase: 'PLAYER_ACTION',
+      eventLog: addLogEntry(state.eventLog, { type: 'CHARM_EFFECT', message: `${player.name} activated Fortune Flare and gained 200 coins.`, emoji: '🌠', playerId: player.id, highlight: true }),
+    };
+  }
+
+  if (def.id === 'lucky-dash') {
+    const players = (state.players ?? []).map((candidate) => candidate.id === player.id
+      ? { ...candidate, activeDiceBonus: (candidate.activeDiceBonus ?? 0) + 2, charms: candidate.charms.map((owned) => owned.instanceId === instanceId ? { ...owned, usesRemaining: 0, activatedThisTurn: true } : owned) }
+      : candidate);
+    return {
+      ...state,
+      players,
+      phase: 'PLAYER_ACTION',
+      eventLog: addLogEntry(state.eventLog, { type: 'CHARM_EFFECT', message: `${player.name} activated Lucky Dash for +2 on the next roll.`, emoji: '👟', playerId: player.id, highlight: true }),
+    };
+  }
+
+  if (def.id === 'rent-shield') {
+    const players = (state.players ?? []).map((candidate) => candidate.id === player.id
+      ? { ...candidate, activeRentShield: true, charms: candidate.charms.map((owned) => owned.instanceId === instanceId ? { ...owned, usesRemaining: 0, activatedThisTurn: true } : owned) }
+      : candidate);
+    return {
+      ...state,
+      players,
+      phase: 'PLAYER_ACTION',
+      eventLog: addLogEntry(state.eventLog, { type: 'CHARM_EFFECT', message: `${player.name} activated Rent Shield for the next rent payment.`, emoji: '🛡️', playerId: player.id, highlight: true }),
+    };
+  }
+
   return state;
+}
+
+function handlePlayerLeft(state: GameState, playerId: string): GameState {
+  const player = state.players.find((candidate) => candidate.id === playerId);
+  if (!player || !player.isAlive) return state;
+
+  const nextState: GameState = {
+    ...state,
+    players: state.players.map((candidate) => candidate.id === playerId ? { ...candidate, isAlive: false, charms: [], money: 0 } : candidate),
+    properties: state.properties.map((property) => property.ownerId === playerId ? { ...property, ownerId: null, tier: 0, mortgaged: false } : property),
+    tradeOffer: state.tradeOffer && (state.tradeOffer.fromPlayerId === playerId || state.tradeOffer.toPlayerId === playerId) ? null : state.tradeOffer,
+    eventLog: addLogEntry(state.eventLog, { type: 'SYSTEM', message: `${player.name} left the game and forfeited their assets.`, emoji: '🚪', playerId, highlight: true }),
+  };
+
+  if (countAlivePlayers(nextState) <= 1) return checkVictory(nextState);
+  if (state.currentPlayerIndex === state.players.findIndex((candidate) => candidate.id === playerId)) {
+    nextState.currentPlayerIndex = nextAlivePlayer(nextState);
+    nextState.phase = 'ROLL_DICE';
+    nextState.diceResult = null;
+  }
+  return nextState;
 }
 
 function checkVictory(state: GameState): GameState {

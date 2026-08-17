@@ -15,6 +15,8 @@ export type GamePhase =
   | 'EVENT_RESOLUTION'
   | 'GAME_OVER';
 
+export const CHARM_SHOP_UNLOCK_ROUND = 5;
+
 export type SpaceType =
   | 'PROPERTY'
   | 'START'
@@ -58,6 +60,7 @@ export type CharmTrigger =
   | 'ON_RECEIVE_RENT'
   | 'ON_BUY_PROPERTY'
   | 'ON_SELL_PROPERTY'
+  | 'ON_MORTGAGE_PROPERTY'
   | 'ON_UPGRADE_PROPERTY'
   | 'ON_TRADE'
   | 'ON_TAX'
@@ -115,6 +118,7 @@ export interface Property {
   spaceIndex: number;
   ownerId: string | null;
   tier: number; // 0-4
+  mortgaged?: boolean;
 }
 
 export interface Player {
@@ -131,6 +135,11 @@ export interface Player {
   jailFreeCharms: number;
   doublesCount: number;
   passedStartThisTurn: boolean;
+  previousPosition?: number;
+  activeDiceBonus?: number;
+  activeRentShield?: boolean;
+  isAI?: boolean;
+  aiPersonality?: AIPersonality;
 }
 
 export interface GameEventEntry {
@@ -160,6 +169,7 @@ export interface TradeOffer {
   receiveProperties: number[];
   receiveCharms: string[];
   status: 'pending' | 'accepted' | 'rejected';
+  counterCount?: number;
 }
 
 export interface CharmShopState {
@@ -175,6 +185,13 @@ export interface RiskChoice {
 }
 
 export type GameMode = 'classic' | 'quick' | 'hardcore' | 'custom';
+export type AIPersonality = 'cautious' | 'aggressive' | 'random';
+export type AIDifficulty = 'easy' | 'medium' | 'hard';
+
+export interface AIPlayerConfig {
+  enabled: boolean;
+  personality: AIPersonality;
+}
 
 export interface GameConfig {
   mode: GameMode;
@@ -188,6 +205,7 @@ export interface GameConfig {
   acceleratedEconomy: boolean;     // quick: higher rents & income
   eventFrequency: number;          // turns between random events (default 6)
   charmRarityWeights?: Record<string, number>; // custom rarity weights
+  aiDifficulty: AIDifficulty;
 }
 
 export interface GameState {
@@ -203,6 +221,12 @@ export interface GameState {
   activeEvent: RandomEvent | null;
   tradeOffer: TradeOffer | null;
   charmShop: CharmShopState | null;
+  charmShopBonus?: { size: number; rerolls: number } | null;
+  shopOpenedThisTurn?: boolean;
+  tradeProposedThisTurn?: boolean;
+  shopReturnPhase?: GamePhase;
+  bankruptcyDebt?: number;
+  bankruptcyCreditorId?: string | null;
   riskChoice: RiskChoice | null;
   winner: string | null;
   seed: number;
@@ -220,18 +244,22 @@ export type GameAction =
   | { type: 'ROLL_DICE' }
   | { type: 'BUY_PROPERTY' }
   | { type: 'UPGRADE_PROPERTY'; spaceIndex: number }
-  | { type: 'SELL_PROPERTY'; spaceIndex: number }
+  | { type: 'MORTGAGE_PROPERTY'; spaceIndex: number }
+  | { type: 'UNMORTGAGE_PROPERTY'; spaceIndex: number }
   | { type: 'SELL_UPGRADE'; spaceIndex: number }
   | { type: 'END_TURN' }
   | { type: 'PROPOSE_TRADE'; offer: Omit<TradeOffer, 'status'> }
+  | { type: 'COUNTER_TRADE'; offer: Omit<TradeOffer, 'status' | 'counterCount'> }
   | { type: 'RESPOND_TRADE'; accept: boolean }
   | { type: 'BUY_CHARM'; charmId: string }
   | { type: 'SELL_CHARM'; instanceId: string }
   | { type: 'UPGRADE_CHARM'; instanceId: string }
   | { type: 'REROLL_SHOP' }
   | { type: 'CLOSE_SHOP' }
+  | { type: 'OPEN_SHOP' }
   | { type: 'LOCK_SHOP_ITEM'; charmId: string }
   | { type: 'ACTIVATE_CHARM'; instanceId: string }
+  | { type: 'PLAYER_LEFT'; playerId: string }
   | { type: 'RESOLVE_EVENT' }
   | { type: 'RISK_CHOOSE'; safe: boolean }
   | { type: 'PAY_JAIL_FINE' }

@@ -44,6 +44,8 @@ export default function PlayerPanel({ player, isActive, properties, state, onCha
         <div className="flex-1 min-w-0">
           <div className="font-medium text-sm truncate" style={{ color: player.color }}>
             {player.name}
+            {player.isAI && <span className="ml-1 text-cyan-400" title={`${player.aiPersonality ?? 'cautious'} AI`}>🤖</span>}
+            {isActive && player.isAI && <span className="ml-1 animate-pulse text-[10px] text-cyan-300">Thinking...</span>}
             {isActive && <span className="ml-1 text-yellow-400 text-xs">◀</span>}
           </div>
           <div className="text-[10px] text-gray-500 flex items-center gap-1">

@@ -19,6 +19,8 @@ export default function BankruptcyModal({ state, onAction }: BankruptcyModalProp
   const ownedProps = (state?.properties ?? []).filter((p: Property) => p.ownerId === player?.id);
   const upgradedProps = ownedProps.filter((p: Property) => (p.tier ?? 0) > 0);
   const charms = player?.charms ?? [];
+  const debt = state?.bankruptcyDebt ?? 0;
+  const canPayDebt = (player?.money ?? 0) >= debt;
 
   const canSellSomething = ownedProps.length > 0 || charms.length > 0 || upgradedProps.length > 0;
 
@@ -37,6 +39,7 @@ export default function BankruptcyModal({ state, onAction }: BankruptcyModalProp
           {player.name}, you can't cover your debts! Sell assets to raise funds or declare bankruptcy.
         </p>
         <p className="text-sm text-yellow-400 mb-4">Current funds: {(player?.money ?? 0).toLocaleString('en-US')} coins</p>
+        <p className="text-sm text-red-300 mb-4">Debt due: {debt.toLocaleString('en-US')} coins</p>
 
         {/* Sell upgrades */}
         {upgradedProps.length > 0 && (
@@ -63,23 +66,23 @@ export default function BankruptcyModal({ state, onAction }: BankruptcyModalProp
           </div>
         )}
 
-        {/* Sell properties */}
-        {ownedProps.length > 0 && (
+        {/* Mortgage properties */}
+        {ownedProps.some((p: Property) => !p.mortgaged && (p.tier ?? 0) === 0) && (
           <div className="mb-3">
-            <h3 className="text-xs text-gray-400 mb-1">Sell Properties</h3>
+            <h3 className="text-xs text-gray-400 mb-1">Mortgage Properties</h3>
             <div className="space-y-1">
-              {ownedProps.map((p: Property) => {
+              {ownedProps.filter((p: Property) => !p.mortgaged && (p.tier ?? 0) === 0).map((p: Property) => {
                 const sp = BOARD_SPACES[p.spaceIndex];
-                const value = Math.floor((sp?.price ?? 0) / 2) + Math.floor((p.tier ?? 0) * (sp?.upgradeCost ?? 0) / 2);
+                const value = Math.floor((sp?.price ?? 0) / 2);
                 return (
                   <Button
                     key={p.spaceIndex}
                     variant="outline"
                     size="sm"
                     className="w-full justify-start text-xs border-red-700 text-red-400"
-                    onClick={() => onAction({ type: 'SELL_PROPERTY', spaceIndex: p.spaceIndex })}
+                    onClick={() => onAction({ type: 'MORTGAGE_PROPERTY', spaceIndex: p.spaceIndex })}
                   >
-                    Sell {sp?.name} (+{value}c)
+                    Mortgage {sp?.name} (+{value}c)
                   </Button>
                 );
               })}
@@ -114,9 +117,10 @@ export default function BankruptcyModal({ state, onAction }: BankruptcyModalProp
         <div className="flex gap-2 mt-4">
           <Button
             onClick={() => onAction({ type: 'END_TURN' })}
+            disabled={!canPayDebt}
             className="flex-1 bg-yellow-600 hover:bg-yellow-500"
           >
-            Try to Continue
+            {canPayDebt ? 'Pay Debt & Continue' : 'Sell Assets to Continue'}
           </Button>
           <Button
             onClick={() => onAction({ type: 'DECLARE_BANKRUPTCY' })}
