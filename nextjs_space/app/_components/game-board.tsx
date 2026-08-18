@@ -19,10 +19,11 @@ import CharmDetailModal from './charm-detail-modal';
 import DiceOverlay from './dice-overlay';
 import MomentOverlay from './moment-overlay';
 import CharmDrawOverlay from './charm-draw-overlay';
-import { Bot, Dices, LoaderCircle, RotateCcw, Volume2, VolumeX, X } from 'lucide-react';
+import { Bot, Contrast, Dices, LoaderCircle, Music2, RotateCcw, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { chooseAIAction } from '@/lib/engine/ai';
 import { useAudioFeedback } from '@/hooks/use-audio-feedback';
+import { useAccessibilityPreferences } from '@/hooks/use-accessibility-preferences';
 
 interface GameBoardProps {
   externalState?: GameState | null;
@@ -65,6 +66,7 @@ export default function GameBoard({ externalState, onExternalAction, onExternalR
   const onlineDiceRef = useRef<string | null>(null);
   const lastEventId = useRef<string | null>(null);
   const audio = useAudioFeedback();
+  const accessibility = useAccessibilityPreferences();
 
   const canInteract = !onlineMode || (onlineCanAct && anim.phase === 'idle');
   const handleAction = useCallback((action: any) => {
@@ -284,6 +286,28 @@ export default function GameBoard({ externalState, onExternalAction, onExternalR
               onChange={(event) => audio.setVolume(Number(event.target.value))}
               className="hidden h-1 w-16 accent-yellow-400 sm:block"
             />
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={audio.toggleMusic}
+              aria-label={audio.musicEnabled ? 'Turn ambient music off' : 'Turn ambient music on'}
+              aria-pressed={audio.musicEnabled}
+              title={audio.musicEnabled ? 'Turn ambient music off' : 'Turn ambient music on'}
+              className={audio.musicEnabled ? 'text-yellow-400' : 'text-gray-400 hover:text-yellow-400'}
+            >
+              <Music2 className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={accessibility.toggleHighContrast}
+              aria-label={accessibility.highContrast ? 'Turn high contrast off' : 'Turn high contrast on'}
+              aria-pressed={accessibility.highContrast}
+              title={accessibility.highContrast ? 'Turn high contrast off' : 'Turn high contrast on'}
+              className={accessibility.highContrast ? 'text-yellow-400' : 'text-gray-400 hover:text-yellow-400'}
+            >
+              <Contrast className="h-4 w-4" />
+            </Button>
           </div>
           <Button variant="ghost" size="sm" onClick={resetGame} disabled={onlineMode} className="text-gray-400 hover:text-red-400">
             <RotateCcw className="w-4 h-4 mr-1" /> New Game

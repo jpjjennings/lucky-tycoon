@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 type SoundName = 'dice' | 'coin' | 'charm' | 'event' | 'victory' | 'warning';
 
@@ -18,9 +18,10 @@ const SOUND_NOTES: Record<SoundName, number[]> = {
 interface AudioSettings {
   muted: boolean;
   volume: number;
+  musicEnabled: boolean;
 }
 
-const DEFAULT_SETTINGS: AudioSettings = { muted: false, volume: 0.35 };
+const DEFAULT_SETTINGS: AudioSettings = { muted: false, volume: 0.35, musicEnabled: false };
 
 function readSettings(): AudioSettings {
   try {
@@ -28,6 +29,7 @@ function readSettings(): AudioSettings {
     return {
       muted: stored.muted === true,
       volume: typeof stored.volume === 'number' ? Math.min(1, Math.max(0, stored.volume)) : DEFAULT_SETTINGS.volume,
+      musicEnabled: stored.musicEnabled === true,
     };
   } catch {
     return DEFAULT_SETTINGS;
@@ -36,6 +38,8 @@ function readSettings(): AudioSettings {
 
 export function useAudioFeedback() {
   const [settings, setSettings] = useState<AudioSettings>(DEFAULT_SETTINGS);
+  const musicContext = useRef<AudioContext | null>(null);
+  const musicTimer = useRef<number | null>(null);
 
   useEffect(() => {
     setSettings(readSettings());
@@ -79,5 +83,53 @@ export function useAudioFeedback() {
     setSettings((current) => ({ ...current, muted: !current.muted }));
   }, []);
 
-  return { ...settings, play, setVolume, toggleMuted };
+  const stopMusic = useCallback(() => {
+    if (musicTimer.current !== null) {
+      window.clearInterval(musicTimer.current);
+      musicTimer.current = null;
+    }
+    if (musicContext.current) {
+      void musicContext.current.close();
+      musicContext.current = null;
+    }
+  }, []);
+
+  const startMusic = useCallback(() => {
+    if (typeof window === 'undefined' || musicContext.current || !window.AudioContext) return;
+    const context = new window.AudioContext();
+    musicContext.current = context;
+    const playChord = () => {
+      const start = context.currentTime;
+      [110, 138.59, 164.81].forEach((frequency) => {
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = 'sine';
+        oscillator.frequency.value = frequency;
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.exponentialRampToValueAtTime(settings.volume * 0.025, start + 0.3);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 1.8);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(start);
+        oscillator.stop(start + 1.9);
+      });
+    };
+    void context.resume();
+    playChord();
+    musicTimer.current = window.setInterval(playChord, 2000);
+  }, [settings.volume]);
+
+  useEffect(() => {
+    if (settings.musicEnabled && !settings.muted && settings.volume > 0) startMusic();
+    else stopMusic();
+    return stopMusic;
+  }, [settings.musicEnabled, settings.muted, settings.volume, startMusic, stopMusic]);
+
+  useEffect(() => () => stopMusic(), [stopMusic]);
+
+  const toggleMusic = useCallback(() => {
+    setSettings((current) => ({ ...current, musicEnabled: !current.musicEnabled }));
+  }, []);
+
+  return { ...settings, play, setVolume, toggleMuted, toggleMusic };
 }

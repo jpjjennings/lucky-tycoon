@@ -124,6 +124,15 @@
     }
   }
 
+  html.high-contrast {
+    filter: contrast(1.25);
+  }
+
+  html.high-contrast :focus-visible {
+    outline-color: #ffffff;
+    outline-width: 3px;
+  }
+
   body {
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
