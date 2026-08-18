@@ -3,10 +3,10 @@
 // ============================================
 import {
   GameState, GameAction, Player, GameConfig, Property,
-  TradeOffer, CharmShopState, OwnedCharm, CHARM_SHOP_UNLOCK_ROUND, AIPlayerConfig,
+  TradeOffer, CharmShopState, OwnedCharm, CHARM_SHOP_UNLOCK_ROUND, AIPlayerConfig, EventCondition,
 } from './types';
 import { BOARD_SPACES, createInitialProperties } from './board-data';
-import { ALL_CHARMS, getCharmDef, SYNERGIES, getCharmUpgradeCost } from './charms-data';
+import { ALL_CHARMS, getCharmDef, SYNERGIES, getCharmUpgradeCost, getCharmEvolutionTurns } from './charms-data';
 import { EVENT_DECK } from './event-deck';
 import { rollDice, nextRng, randomInt, pickRandom, shuffleArray } from './rng';
 import {
@@ -666,7 +666,7 @@ function resolveSpace(state: GameState, spaceIndex: number): GameState {
 
       if ((player.charms ?? []).length < (s.config?.maxCharmSlots ?? 3) && charm) {
         const instanceId = `charm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-        const newCharm: OwnedCharm = { instanceId, definitionId: charm.id, activatedThisTurn: false, level: 1 };
+        const newCharm: OwnedCharm = { instanceId, definitionId: charm.id, activatedThisTurn: false, level: 1, turnsHeld: 0 };
         const updatedCharms = [...(player.charms ?? []), newCharm];
         const synergies = checkSynergies({ ...player, charms: updatedCharms });
         s.players = updatePlayer(s, player.id, { charms: updatedCharms, activeSynergies: synergies });
@@ -728,29 +728,7 @@ function resolveSpace(state: GameState, spaceIndex: number): GameState {
     }
 
     case 'EVENT': {
-      // Draw an event
-      let availableEvents = EVENT_DECK.filter((e: any) => !(s.usedEventIds ?? []).includes(e.id));
-      if (availableEvents.length === 0) {
-        s.usedEventIds = [];
-        availableEvents = [...EVENT_DECK];
-      }
-      const { value: evt, nextState: rng } = pickRandom(availableEvents, s.rngState);
-      s.rngState = rng;
-      if (evt) {
-        s.activeEvent = evt;
-        s.usedEventIds = [...(s.usedEventIds ?? []), evt.id];
-        s.phase = 'EVENT_RESOLUTION';
-        s.eventLog = addLogEntry(s.eventLog, {
-          type: 'EVENT',
-          message: `${evt.icon} ${evt.name}: ${evt.description}`,
-          emoji: evt.icon,
-          playerId: player.id,
-          highlight: true,
-        });
-      } else {
-        s.phase = 'PLAYER_ACTION';
-      }
-      return s;
+      return drawRandomEvent(s, player);
     }
 
     case 'START': {
@@ -975,6 +953,10 @@ function handleEndTurn(state: GameState): GameState {
   let s = { ...state };
   const player = (s.players ?? [])[s.currentPlayerIndex];
 
+  if (player?.isAlive) {
+    s = advanceCharmEvolution(s, player.id);
+  }
+
   s.turnsSinceLastEvent = (s.turnsSinceLastEvent ?? 0) + 1;
   s.turnCount = (s.turnCount ?? 0) + 1;
 
@@ -1033,24 +1015,85 @@ function handleEndTurn(state: GameState): GameState {
 }
 
 function triggerRandomEvent(state: GameState): GameState {
+  const player = (state.players ?? [])[state.currentPlayerIndex];
+  return drawRandomEvent(state, player);
+}
+
+function drawRandomEvent(state: GameState, player: Player | undefined): GameState {
   let s = { ...state };
-  let availableEvents = EVENT_DECK.filter((e: any) => !(s.usedEventIds ?? []).includes(e.id));
+  let availableEvents = EVENT_DECK.filter((event) =>
+    !(s.usedEventIds ?? []).includes(event.id) && isEventConditionMet(s, event.condition, player)
+  );
   if (availableEvents.length === 0) {
     s.usedEventIds = [];
-    availableEvents = [...EVENT_DECK];
+    availableEvents = EVENT_DECK.filter((event) => isEventConditionMet(s, event.condition, player));
   }
-  const { value: evt, nextState: rng } = pickRandom(availableEvents, s.rngState);
+
+  const { value: event, nextState: rng } = pickRandom(availableEvents, s.rngState);
   s.rngState = rng;
-  if (evt) {
-    s.activeEvent = evt;
-    s.usedEventIds = [...(s.usedEventIds ?? []), evt.id];
-    s.phase = 'EVENT_RESOLUTION';
+  if (!event || !player) {
+    s.phase = 'PLAYER_ACTION';
+    return s;
+  }
+
+  s.activeEvent = event;
+  s.usedEventIds = [...(s.usedEventIds ?? []), event.id];
+  s.phase = 'EVENT_RESOLUTION';
+  s.eventLog = addLogEntry(s.eventLog, {
+    type: 'EVENT',
+    message: `${event.icon} ${event.name}: ${event.description}`,
+    emoji: event.icon,
+    playerId: player.id,
+    highlight: true,
+  });
+  return s;
+}
+
+function isEventConditionMet(state: GameState, condition: EventCondition | undefined, player: Player | undefined): boolean {
+  if (!condition) return !!player;
+  if (!player) return false;
+
+  switch (condition.type) {
+    case 'PLAYER_OWNS_PROPERTIES':
+      return (state.properties ?? []).filter((property) => property.ownerId === player.id).length >= condition.minimum;
+    case 'PLAYER_HAS_CHARMS':
+      return (player.charms ?? []).length >= condition.minimum;
+    case 'PLAYER_OWNS_FULL_GROUP':
+      return BOARD_SPACES.some((space) =>
+        space.type === 'PROPERTY' && !!space.group && playerOwnsFullGroupWithCharms(state, player.id, space.group)
+      );
+    default:
+      return false;
+  }
+}
+
+function advanceCharmEvolution(state: GameState, playerId: string): GameState {
+  let s = { ...state };
+  const player = (s.players ?? []).find((candidate) => candidate.id === playerId);
+  if (!player) return s;
+
+  const evolvedCharms = (player.charms ?? []).map((charm) => {
+    const def = getCharmDef(charm.definitionId);
+    const level = charm.level ?? 1;
+    const maxLevel = def?.maxLevel ?? 1;
+    if (!def?.upgradeable || level >= maxLevel) return charm;
+
+    const turnsHeld = (charm.turnsHeld ?? 0) + 1;
+    const threshold = getCharmEvolutionTurns(def);
+    if (turnsHeld < threshold) return { ...charm, turnsHeld };
+
     s.eventLog = addLogEntry(s.eventLog, {
-      type: 'EVENT',
-      message: `${evt.icon} ${evt.name}: ${evt.description}`,
-      emoji: evt.icon,
+      type: 'CHARM',
+      message: `${player.name}'s ${def.icon} ${def.name} evolved to Lv.${level + 1}!`,
+      emoji: '✨',
+      playerId: player.id,
       highlight: true,
     });
+    return { ...charm, level: level + 1, turnsHeld: 0 };
+  });
+
+  if (evolvedCharms.some((charm, index) => charm !== player.charms[index])) {
+    s.players = updatePlayer(s, player.id, { charms: evolvedCharms });
   }
   return s;
 }
@@ -1106,7 +1149,7 @@ function handleBuyCharm(state: GameState, charmId: string): GameState {
   }
 
   const instanceId = `charm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-  const newCharm: OwnedCharm = { instanceId, definitionId: charmId, activatedThisTurn: false, level: 1 };
+  const newCharm: OwnedCharm = { instanceId, definitionId: charmId, activatedThisTurn: false, level: 1, turnsHeld: 0 };
   const updatedCharms = [...(player.charms ?? []), newCharm];
   const synergies = checkSynergies({ ...player, charms: updatedCharms });
 
@@ -1209,7 +1252,7 @@ function handleUpgradeCharm(state: GameState, instanceId: string): GameState {
   if ((player.money ?? 0) < cost) return s;
 
   const updatedCharms = (player.charms ?? []).map((c: OwnedCharm) =>
-    c.instanceId === instanceId ? { ...c, level: currentLevel + 1 } : c
+    c.instanceId === instanceId ? { ...c, level: currentLevel + 1, turnsHeld: 0 } : c
   );
   s.players = updatePlayer(s, player.id, {
     money: (player.money ?? 0) - cost,
@@ -1243,6 +1286,32 @@ function handleResolveEvent(state: GameState): GameState {
   const evt = s.activeEvent;
   const player = (s.players ?? [])[s.currentPlayerIndex];
   if (!evt || !player) { s.phase = 'PLAYER_ACTION'; return s; }
+
+  if (!isEventConditionMet(s, evt.condition, player)) {
+    s.activeEvent = null;
+    s.phase = 'PLAYER_ACTION';
+    s.eventLog = addLogEntry(s.eventLog, {
+      type: 'EVENT',
+      message: `${evt.name} had no effect because its condition was not met.`,
+      emoji: '↩️',
+      playerId: player.id,
+    });
+    return s;
+  }
+
+  if (evt.effect?.type === 'MONEY_DELTA') {
+    s.players = updatePlayer(s, player.id, { money: Math.max(0, (player.money ?? 0) + evt.effect.amount) });
+    s.activeEvent = null;
+    s.phase = 'PLAYER_ACTION';
+    s.eventLog = addLogEntry(s.eventLog, {
+      type: 'EVENT',
+      message: evt.effect.successMessage.replace('{player}', player.name),
+      emoji: evt.icon,
+      playerId: player.id,
+      highlight: true,
+    });
+    return s;
+  }
 
   switch (evt.id) {
     case 'market-crash':

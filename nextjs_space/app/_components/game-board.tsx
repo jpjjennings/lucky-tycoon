@@ -19,9 +19,10 @@ import CharmDetailModal from './charm-detail-modal';
 import DiceOverlay from './dice-overlay';
 import MomentOverlay from './moment-overlay';
 import CharmDrawOverlay from './charm-draw-overlay';
-import { Bot, Dices, LoaderCircle, RotateCcw, X } from 'lucide-react';
+import { Bot, Dices, LoaderCircle, RotateCcw, Volume2, VolumeX, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { chooseAIAction } from '@/lib/engine/ai';
+import { useAudioFeedback } from '@/hooks/use-audio-feedback';
 
 interface GameBoardProps {
   externalState?: GameState | null;
@@ -62,6 +63,8 @@ export default function GameBoard({ externalState, onExternalAction, onExternalR
   const onlinePlayerRef = useRef<string | null>(null);
   const onlinePositionRef = useRef<number | null>(null);
   const onlineDiceRef = useRef<string | null>(null);
+  const lastEventId = useRef<string | null>(null);
+  const audio = useAudioFeedback();
 
   const canInteract = !onlineMode || (onlineCanAct && anim.phase === 'idle');
   const handleAction = useCallback((action: any) => {
@@ -106,6 +109,26 @@ export default function GameBoard({ externalState, onExternalAction, onExternalR
   useEffect(() => {
     if (anim.phase === 'rolling' || anim.phase === 'moving') movementAnimationSeen.current = true;
   }, [anim.phase]);
+
+  useEffect(() => {
+    if (anim.phase === 'rolling') audio.play('dice');
+  }, [anim.phase, audio.play]);
+
+  useEffect(() => {
+    const latest = state?.eventLog?.[state.eventLog.length - 1];
+    if (!latest?.id) return;
+    if (lastEventId.current === null) {
+      lastEventId.current = latest.id;
+      return;
+    }
+    if (lastEventId.current === latest.id) return;
+    lastEventId.current = latest.id;
+    if (latest.type === 'CHARM' || latest.type === 'SYNERGY') audio.play('charm');
+    else if (latest.type === 'BUY' || latest.type === 'SELL' || latest.type === 'UPGRADE') audio.play('coin');
+    else if (latest.type === 'BANKRUPTCY' || latest.type === 'RENT') audio.play('warning');
+    else if (latest.type === 'EVENT') audio.play('event');
+    else if (latest.type === 'VICTORY') audio.play('victory');
+  }, [state?.eventLog, audio.play]);
 
   // Computer players use the same reducer actions as human players, with a
   // short delay so their decisions remain visible in pass-and-play sessions.
@@ -195,8 +218,11 @@ export default function GameBoard({ externalState, onExternalAction, onExternalR
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex flex-col lg:h-dvh lg:min-h-0 lg:overflow-hidden">
+      <a href="#game-main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-yellow-400 focus:px-3 focus:py-2 focus:text-sm focus:font-bold focus:text-gray-950">
+        Skip to game board
+      </a>
       {/* Header */}
-      <header className="bg-gray-900/80 backdrop-blur border-b border-gray-800 px-4 py-2 flex items-center justify-between shrink-0">
+      <header aria-label="Game header" className="bg-gray-900/80 backdrop-blur border-b border-gray-800 px-4 py-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-xl">🍀</span>
           <h1 className="font-display font-bold text-lg text-yellow-400">Lucky Tycoon</h1>
@@ -235,6 +261,30 @@ export default function GameBoard({ externalState, onExternalAction, onExternalR
           >
             <Dices className="w-4 h-4" />
           </Button>
+          <div className="flex items-center gap-1" aria-label="Audio controls">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={audio.toggleMuted}
+              aria-label={audio.muted ? 'Unmute game sounds' : 'Mute game sounds'}
+              aria-pressed={audio.muted}
+              title={audio.muted ? 'Unmute game sounds' : 'Mute game sounds'}
+              className="text-gray-400 hover:text-yellow-400"
+            >
+              {audio.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+            </Button>
+            <label htmlFor="game-volume" className="sr-only">Game volume</label>
+            <input
+              id="game-volume"
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={audio.volume}
+              onChange={(event) => audio.setVolume(Number(event.target.value))}
+              className="hidden h-1 w-16 accent-yellow-400 sm:block"
+            />
+          </div>
           <Button variant="ghost" size="sm" onClick={resetGame} disabled={onlineMode} className="text-gray-400 hover:text-red-400">
             <RotateCcw className="w-4 h-4 mr-1" /> New Game
           </Button>
@@ -242,7 +292,7 @@ export default function GameBoard({ externalState, onExternalAction, onExternalR
       </header>
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden lg:min-h-0">
+      <main id="game-main" aria-label="Lucky Tycoon game" className="flex-1 flex flex-col lg:flex-row overflow-hidden lg:min-h-0">
         {/* Left: Players */}
         <div className="lg:w-64 xl:w-72 shrink-0 bg-gray-900/40 border-r border-gray-800 p-3 flex flex-col gap-2 lg:overflow-hidden">
           <div className="flex flex-row lg:flex-col gap-2 overflow-x-auto lg:overflow-y-auto lg:min-h-0 lg:flex-1">
@@ -294,7 +344,7 @@ export default function GameBoard({ externalState, onExternalAction, onExternalR
             <EventFeed entries={state?.eventLog ?? []} />
           </div>
         )}
-      </div>
+      </main>
 
       {/* Modals */}
       {phase === 'CHARM_SHOP' && state?.charmShop && (

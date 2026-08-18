@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createInitialState, gameReducer } from './reducer';
-import { OwnedCharm } from './types';
+import { GameState, OwnedCharm } from './types';
 import { chooseAIAction } from './ai';
+import { EVENT_DECK } from './event-deck';
 
 const charm: OwnedCharm = {
   instanceId: 'charm-test',
@@ -74,6 +75,45 @@ test('accepted trades transfer charms between players', () => {
   assert.equal(completed.tradeOffer, null);
   assert.equal(completed.players[0].charms.length, 0);
   assert.equal(completed.players[1].charms[0].instanceId, charm.instanceId);
+});
+
+test('upgradeable charms evolve after being held for three completed turns', () => {
+  const initial = createInitialState(['A', 'B']);
+  const state = {
+    ...initial,
+    phase: 'PLAYER_ACTION' as const,
+    players: initial.players.map((player) => player.id === 'player-0'
+      ? { ...player, charms: [{ ...charm, definitionId: 'lucky-penny', turnsHeld: 0 }] }
+      : player),
+  };
+
+  let next: GameState = state;
+  for (let index = 0; index < 5; index += 1) {
+    next = gameReducer(next, { type: 'END_TURN' });
+  }
+
+  assert.equal(next.players[0].charms[0].level, 2);
+  assert.equal(next.players[0].charms[0].turnsHeld, 0);
+  assert.ok(next.eventLog.some((entry) => entry.message.includes('evolved to Lv.2')));
+});
+
+test('conditional charm event rewards an eligible player', () => {
+  const initial = createInitialState(['A', 'B']);
+  const event = EVENT_DECK.find((candidate) => candidate.id === 'charm-bounty');
+  const state = {
+    ...initial,
+    phase: 'EVENT_RESOLUTION' as const,
+    activeEvent: event ?? null,
+    players: initial.players.map((player) => player.id === 'player-0'
+      ? { ...player, money: 100, charms: [charm, { ...charm, instanceId: 'charm-test-2', definitionId: 'lucky-penny' }] }
+      : player),
+  };
+
+  const next = gameReducer(state, { type: 'RESOLVE_EVENT' });
+
+  assert.equal(next.players[0].money, 300);
+  assert.equal(next.activeEvent, null);
+  assert.equal(next.phase, 'PLAYER_ACTION');
 });
 
 test('AI chooses to roll only for the active AI player', () => {

@@ -88,4 +88,28 @@ export const EVENT_DECK: RandomEvent[] = [
     description: 'A random property from each player is damaged — downgraded by one tier!',
     icon: '🌋',
   },
+  {
+    id: 'monopoly-bonus',
+    name: 'Monopoly Bonus',
+    description: 'Complete a colour group and collect 300 coins from the bank!',
+    icon: '🎨',
+    condition: { type: 'PLAYER_OWNS_FULL_GROUP' },
+    effect: {
+      type: 'MONEY_DELTA',
+      amount: 300,
+      successMessage: '{player} completed a colour group and collected 300 coins!',
+    },
+  },
+  {
+    id: 'charm-bounty',
+    name: 'Charm Bounty',
+    description: 'Hold at least two charms and receive 200 coins from a collector!',
+    icon: '✨',
+    condition: { type: 'PLAYER_HAS_CHARMS', minimum: 2 },
+    effect: {
+      type: 'MONEY_DELTA',
+      amount: 200,
+      successMessage: '{player} impressed the collector and received 200 coins!',
+    },
+  },
 ];

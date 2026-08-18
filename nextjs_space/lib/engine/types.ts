@@ -82,6 +82,7 @@ export interface CharmDefinition {
   upgradeable?: boolean;
   maxLevel?: number;        // default 1 (no upgrade); 2 or 3 for upgradeable
   upgradeDescriptions?: string[]; // descriptions per level [lvl2, lvl3]
+  evolutionTurns?: number;  // completed turns held per automatic level
   synergyTags?: string[];   // tags for synergy matching
 }
 
@@ -98,6 +99,7 @@ export interface OwnedCharm {
   definitionId: string;
   activatedThisTurn: boolean;
   level: number;            // starts at 1
+  turnsHeld?: number;       // completed turns held toward the next evolution
   usesRemaining?: number;   // for limited-use charms
 }
 
@@ -157,6 +159,19 @@ export interface RandomEvent {
   name: string;
   description: string;
   icon: string;
+  condition?: EventCondition;
+  effect?: EventEffect;
+}
+
+export type EventCondition =
+  | { type: 'PLAYER_OWNS_PROPERTIES'; minimum: number }
+  | { type: 'PLAYER_OWNS_FULL_GROUP' }
+  | { type: 'PLAYER_HAS_CHARMS'; minimum: number };
+
+export interface EventEffect {
+  type: 'MONEY_DELTA';
+  amount: number;
+  successMessage: string;
 }
 
 export interface TradeOffer {

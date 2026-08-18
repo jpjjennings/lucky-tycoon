@@ -56,6 +56,8 @@ export default function ActionBar({ state, onAction, onOpenTrade, onRoll, canAct
 
   return (
     <motion.div
+      role="region"
+      aria-label={`${player.name}'s game actions`}
       className="max-h-[36vh] shrink-0 overflow-y-auto border-t border-gray-800 bg-gray-900/90 px-4 py-3 backdrop-blur scrollbar-none"
       layout
     >

@@ -1,6 +1,6 @@
 'use client';
 import { GameState, Player, OwnedCharm, CharmDefinition } from '@/lib/engine/types';
-import { RARITY_COLORS, getCharmUpgradeCost, getCharmDef } from '@/lib/engine/charms-data';
+import { RARITY_COLORS, getCharmUpgradeCost, getCharmDef, getCharmEvolutionTurns } from '@/lib/engine/charms-data';
 import { computeModifiers } from '@/lib/engine/charm-effects';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
@@ -126,6 +126,8 @@ export default function CharmShopModal({ state, onAction }: CharmShopModalProps)
                 const upgradeDesc = canUpgrade && def.upgradeDescriptions
                   ? def.upgradeDescriptions[level - 1] ?? ''
                   : '';
+                const evolutionTurns = canUpgrade ? getCharmEvolutionTurns(def) : 0;
+                const turnsHeld = owned.turnsHeld ?? 0;
 
                 return (
                   <div
@@ -140,6 +142,11 @@ export default function CharmShopModal({ state, onAction }: CharmShopModalProps)
                         </span>
                         {level > 1 && (
                           <span className="ml-1 text-[10px] font-bold text-cyan-400">Lv.{level}</span>
+                        )}
+                        {canUpgrade && (
+                          <div className="mt-1 text-[10px] text-gray-500">
+                            Evolves in {Math.max(0, evolutionTurns - turnsHeld)} turn{Math.max(0, evolutionTurns - turnsHeld) === 1 ? '' : 's'}
+                          </div>
                         )}
                       </div>
                     </div>

@@ -844,3 +844,7 @@ export function getCharmUpgradeCost(def: CharmDefinition, currentLevel: number):
   // Each level costs 60% of base cost * level
   return Math.floor((def.cost ?? 100) * 0.6 * currentLevel);
 }
+
+export function getCharmEvolutionTurns(def: CharmDefinition): number {
+  return def.evolutionTurns ?? (def.upgradeable ? 3 : Infinity);
+}
