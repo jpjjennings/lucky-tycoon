@@ -6,6 +6,7 @@ import { getCharmDef } from '@/lib/engine/charms-data';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, ArrowDownCircle, Skull } from 'lucide-react';
+import { useDialogFocus } from '@/hooks/use-dialog-focus';
 
 interface BankruptcyModalProps {
   state: GameState;
@@ -14,6 +15,7 @@ interface BankruptcyModalProps {
 
 export default function BankruptcyModal({ state, onAction }: BankruptcyModalProps) {
   const player = state?.players?.[state?.currentPlayerIndex ?? 0];
+  const dialogRef = useDialogFocus<HTMLDivElement>();
   if (!player) return null;
 
   const ownedProps = (state?.properties ?? []).filter((p: Property) => p.ownerId === player?.id);
@@ -27,13 +29,17 @@ export default function BankruptcyModal({ state, onAction }: BankruptcyModalProp
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
       <motion.div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="bankruptcy-dialog-title"
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-gray-900 border border-red-500/30 rounded-xl p-6 max-w-md w-full"
       >
         <div className="flex items-center gap-2 mb-4 text-red-400">
           <AlertTriangle className="w-5 h-5" />
-          <h2 className="font-display font-bold text-lg">Bankruptcy Warning!</h2>
+          <h2 id="bankruptcy-dialog-title" className="font-display font-bold text-lg">Bankruptcy Warning!</h2>
         </div>
         <p className="text-sm text-gray-300 mb-4">
           {player.name}, you can't cover your debts! Sell assets to raise funds or declare bankruptcy.
@@ -116,6 +122,7 @@ export default function BankruptcyModal({ state, onAction }: BankruptcyModalProp
         {/* After selling, can try to end turn (the reducer will check if they can pay) */}
         <div className="flex gap-2 mt-4">
           <Button
+            data-dialog-autofocus
             onClick={() => onAction({ type: 'END_TURN' })}
             disabled={!canPayDebt}
             className="flex-1 bg-yellow-600 hover:bg-yellow-500"

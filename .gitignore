@@ -4,6 +4,7 @@ nextjs_space/out/
 nextjs_space/.yarn/
 nextjs_space/.pnp.*
 nextjs_space/tsconfig.tsbuildinfo
+nextjs_space/test-results/
 nextjs_space/.env*
 !nextjs_space/.env.example
 *.log

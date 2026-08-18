@@ -84,6 +84,7 @@ export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements
   const [aiEnabled, setAiEnabled] = useState([false, false, false, false]);
   const [aiPersonalities, setAiPersonalities] = useState<AIPersonality[]>(['cautious', 'aggressive', 'random', 'cautious']);
   const [aiDifficulty, setAiDifficulty] = useState<AIDifficulty>('medium');
+  const [startError, setStartError] = useState<string | null>(null);
   const [selectedMode, setSelectedMode] = useState<GameMode>('classic');
   const [playerLevel, setPlayerLevel] = useState(1);
   const [selectedToken, setSelectedToken] = useState('🚀');
@@ -122,6 +123,11 @@ export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements
       return `Player ${i + 1}`;
     });
     const aiPlayers = aiEnabled.slice(0, playerCount).map((enabled, i) => ({ enabled, personality: aiPersonalities[i] }));
+    if (aiPlayers.every((player) => player.enabled)) {
+      setStartError('At least one human player is required to start a game.');
+      return;
+    }
+    setStartError(null);
     // Build custom icons array — player 1 uses their selected token, others use defaults
     const icons = [selectedToken, ...DEFAULT_ICONS.slice(1)];
     if (selectedMode === 'custom') {
@@ -349,7 +355,8 @@ export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements
                     onChange={(e) => {
                       const next = [...aiEnabled];
                       next[i] = e.target.checked;
-                      setAiEnabled(next);
+                       setAiEnabled(next);
+                       setStartError(null);
                       if (e.target.checked) {
                         const nextNames = [...names];
                         nextNames[i] = randomAIName(aiPersonalities[i]);
@@ -384,8 +391,8 @@ export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements
         </div>
 
         {/* Start button */}
-        <Button
-          onClick={handleStart}
+         <Button
+           onClick={handleStart}
           className={`w-full h-12 font-bold text-lg transition-all ${
             selectedMode === 'quick'
               ? 'bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500'
@@ -397,8 +404,11 @@ export default function LobbyScreen({ onStart, onShowProfile, onShowAchievements
           } text-white`}
         >
           <Play className="w-5 h-5 mr-2" />
-          Start {modeInfo.name}
-        </Button>
+           Start {modeInfo.name}
+         </Button>
+         {startError && (
+           <p role="alert" className="mt-2 text-center text-xs text-red-300">{startError}</p>
+         )}
 
         {/* How to play */}
         <div className="border-t border-gray-800 pt-4">

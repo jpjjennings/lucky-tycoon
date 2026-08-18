@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Dices, Home, ShoppingBag, ShoppingCart, ArrowUpCircle, ArrowDownCircle, HandCoins, ChevronRight, Lock, DollarSign } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { useDialogFocus } from '@/hooks/use-dialog-focus';
 
 interface ActionBarProps {
   state: GameState;
@@ -26,6 +27,7 @@ export default function ActionBar({ state, onAction, onOpenTrade, onRoll, canAct
   const isAnimating = anim.phase !== 'idle';
   const [pendingSale, setPendingSale] = useState<number | null>(null);
   const [showInventory, setShowInventory] = useState(false);
+  const inventoryRef = useDialogFocus<HTMLDivElement>(showInventory);
 
   if (!state) return null;
 
@@ -227,13 +229,13 @@ export default function ActionBar({ state, onAction, onOpenTrade, onRoll, canAct
         </div>
         {showInventory && typeof document !== 'undefined' && createPortal((
           <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-            <div className="max-h-[90vh] w-[min(96vw,1100px)] rounded-xl border border-orange-500/30 bg-gray-950 p-5 shadow-2xl">
+            <div ref={inventoryRef} role="dialog" aria-modal="true" aria-labelledby="property-inventory-title" className="max-h-[90vh] w-[min(96vw,1100px)] rounded-xl border border-orange-500/30 bg-gray-950 p-5 shadow-2xl">
               <div className="mb-4 flex items-center justify-between">
                 <div>
-                  <h2 className="font-display text-lg font-bold text-orange-300">Property Inventory</h2>
+                  <h2 id="property-inventory-title" className="font-display text-lg font-bold text-orange-300">Property Inventory</h2>
                   <p className="text-xs text-gray-500">Hover for details. Select a property to mortgage or unmortgage it.</p>
                 </div>
-                <Button variant="ghost" size="sm" onClick={() => { setShowInventory(false); setPendingSale(null); }} className="text-gray-400">Close</Button>
+                 <Button data-dialog-autofocus variant="ghost" size="sm" onClick={() => { setShowInventory(false); setPendingSale(null); }} className="text-gray-400">Close</Button>
               </div>
               <div className="grid max-h-[72vh] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {ownedProperties.map((ownedProperty: Property) => {

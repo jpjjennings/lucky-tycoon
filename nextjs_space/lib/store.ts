@@ -33,7 +33,7 @@ const ANIM_IDLE: AnimationState = {
 interface GameStore {
   state: GameState | null;
   anim: AnimationState;
-  startGame: (playerNames: string[], config?: Partial<GameConfig>, customIcons?: string[], aiPlayers?: AIPlayerConfig[]) => void;
+  startGame: (playerNames: string[], config?: Partial<GameConfig>, customIcons?: string[], aiPlayers?: AIPlayerConfig[]) => boolean;
   dispatch: (action: GameAction) => void;
   resetGame: () => void;
   rollWithAnimation: () => void;
@@ -47,6 +47,9 @@ export const useGameStore = create<GameStore>((set: any, get: any) => ({
   anim: { ...ANIM_IDLE },
 
   startGame: (playerNames: string[], config?: Partial<GameConfig>, customIcons?: string[], aiPlayers?: AIPlayerConfig[]) => {
+    if (aiPlayers && playerNames.length > 0 && playerNames.every((_, index) => aiPlayers[index]?.enabled === true)) {
+      return false;
+    }
     // Merge mode preset with any custom overrides
     const mode = config?.mode ?? 'classic';
     const preset = MODE_PRESETS[mode] ?? {};
@@ -54,6 +57,7 @@ export const useGameStore = create<GameStore>((set: any, get: any) => ({
     const initial = createInitialState(playerNames, undefined, merged, customIcons, aiPlayers);
     set({ state: initial, anim: { ...ANIM_IDLE } });
     try { localStorage.setItem('lucky-tycoon-save', JSON.stringify(initial)); } catch {}
+    return true;
   },
 
   dispatch: (action: GameAction) => {

@@ -1,4 +1,5 @@
 'use client';
+import { useMemo } from 'react';
 import { GameState, Player, Property } from '@/lib/engine/types';
 import { BOARD_SPACES } from '@/lib/engine/board-data';
 import { TIER_NAMES } from '@/lib/engine/types';
@@ -30,26 +31,34 @@ export default function BoardGrid({ state }: BoardGridProps) {
     ? anim.movePath[anim.moveStep]
     : null;
 
-  const playersOnSpace = (spaceIndex: number): (Player & { isAnimToken?: boolean })[] => {
-    const realPlayers = (state?.players ?? []).filter((p: Player) => {
-      if (!p?.isAlive) return false;
+  const playersBySpace = useMemo(() => {
+    const bySpace = new Map<number, Player[]>();
+    (state?.players ?? []).forEach((p: Player) => {
+      if (!p?.isAlive) return;
       // Keep the token at its starting space until the dice result is confirmed.
+      let displaySpace = p.position ?? -1;
       if (p.id === anim.movingPlayerId && anim.phase === 'rolling') {
-        return anim.startPosition === spaceIndex;
+        displaySpace = anim.startPosition ?? displaySpace;
       }
       // Once movement starts, hide the final state position and show the animated path.
       if (isMoving && p.id === anim.movingPlayerId) {
-        return animatedPos === spaceIndex;
+        displaySpace = animatedPos ?? displaySpace;
       }
-      return (p?.position ?? -1) === spaceIndex;
+      if (displaySpace >= 0) {
+        bySpace.set(displaySpace, [...(bySpace.get(displaySpace) ?? []), p]);
+      }
     });
+    return bySpace;
+  }, [state?.players, anim.movingPlayerId, anim.phase, anim.startPosition, animatedPos, isMoving]);
 
-    return realPlayers;
-  };
-
-  const getPropertyState = (spaceIndex: number): Property | undefined => {
-    return (state?.properties ?? []).find((p: Property) => p.spaceIndex === spaceIndex);
-  };
+  const propertyBySpace = useMemo(
+    () => new Map((state?.properties ?? []).map((property: Property) => [property.spaceIndex, property])),
+    [state?.properties],
+  );
+  const playerById = useMemo(
+    () => new Map((state?.players ?? []).map((player: Player) => [player.id, player])),
+    [state?.players],
+  );
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -70,16 +79,19 @@ export default function BoardGrid({ state }: BoardGridProps) {
       {/* Board spaces */}
       {BOARD_SPACES.map((space: any, idx: number) => {
         const pos = getGridPosition(idx);
-        const prop = getPropertyState(idx);
-        const players = playersOnSpace(idx);
-        const isOwned = prop?.ownerId != null;
-        const owner = isOwned ? (state?.players ?? []).find((p: Player) => p.id === prop?.ownerId) : null;
+          const prop = propertyBySpace.get(idx);
+          const players = playersBySpace.get(idx) ?? [];
+          const isOwned = prop?.ownerId != null;
+          const owner = isOwned ? playerById.get(prop?.ownerId ?? '') : null;
         const tier = prop?.tier ?? 0;
 
          return (
           <Tooltip key={idx}>
             <TooltipTrigger asChild>
               <div
+                tabIndex={0}
+                role="article"
+                aria-label={`${space.name}. ${space.type.replace(/_/g, ' ')}${owner ? `. Owned by ${owner.name}` : ''}`}
                 className={`relative flex h-full w-full min-h-0 min-w-0 flex-col items-center justify-between p-[3px] rounded border transition-all ${
                   players.length > 0 ? 'ring-1 ring-yellow-500/50' : ''
                 }`}

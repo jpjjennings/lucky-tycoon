@@ -4,6 +4,7 @@ import { RARITY_COLORS, SYNERGIES, getCharmDef, getCharmUpgradeCost } from '@/li
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { X, Coins, ArrowUp, Sparkles, Zap, Check } from 'lucide-react';
+import { useDialogFocus } from '@/hooks/use-dialog-focus';
 
 // Human-readable labels for when each charm fires
 const TRIGGER_LABELS: Record<string, string> = {
@@ -51,6 +52,7 @@ export default function CharmDetailModal({
   const level = owned?.level ?? 1;
   const maxLevel = def?.maxLevel ?? 1;
   const canUpgrade = !!def?.upgradeable && level < maxLevel;
+  const dialogRef = useDialogFocus<HTMLDivElement>(!!def);
 
   // Synergies this charm takes part in
   const relatedSynergies = def
@@ -68,6 +70,10 @@ export default function CharmDetailModal({
           onClick={onClose}
         >
           <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="charm-detail-dialog-title"
             initial={{ opacity: 0, scale: 0.85, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 10 }}
@@ -126,7 +132,7 @@ export default function CharmDetailModal({
 
               {/* Name + rarity */}
               <div className="mb-4 text-center">
-                <h2 className="font-display text-2xl font-bold tracking-tight" style={{ color: rarityColor }}>
+                <h2 id="charm-detail-dialog-title" className="font-display text-2xl font-bold tracking-tight" style={{ color: rarityColor }}>
                   {def.name}
                 </h2>
                 <div className="mt-1.5 flex items-center justify-center gap-2">

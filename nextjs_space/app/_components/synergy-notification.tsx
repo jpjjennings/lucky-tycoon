@@ -44,6 +44,8 @@ export default function SynergyNotification({ state }: SynergyNotificationProps)
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -30, scale: 0.9 }}
           className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] pointer-events-none"
+          role="status"
+          aria-live="assertive"
         >
           <div className="bg-gradient-to-r from-yellow-900/90 via-amber-900/90 to-yellow-900/90 backdrop-blur border border-yellow-500/50 rounded-xl px-8 py-4 text-center shadow-2xl shadow-yellow-500/20">
             <div className="text-3xl mb-1">{synergy.icon}</div>

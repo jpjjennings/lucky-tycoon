@@ -1,5 +1,5 @@
 'use client';
-import { useRef, useEffect } from 'react';
+import { memo, useRef, useEffect, useMemo } from 'react';
 import { GameEventEntry } from '@/lib/engine/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -26,9 +26,9 @@ const TYPE_COLORS: Record<string, string> = {
   VICTORY: 'text-yellow-400',
 };
 
-export default function EventFeed({ entries }: EventFeedProps) {
+function EventFeed({ entries }: EventFeedProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
-  const recentEntries = (entries ?? []).slice(-50);
+  const recentEntries = useMemo(() => (entries ?? []).slice(-50), [entries]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView?.({ behavior: 'smooth' });
@@ -36,7 +36,7 @@ export default function EventFeed({ entries }: EventFeedProps) {
 
   return (
     <ScrollArea className="flex-1 p-3">
-      <div className="space-y-1">
+      <div className="space-y-1" role="log" aria-label="Game event feed" aria-live="polite" aria-relevant="additions">
         <AnimatePresence initial={false}>
           {recentEntries.map((entry: GameEventEntry) => (
             <motion.div
@@ -59,3 +59,5 @@ export default function EventFeed({ entries }: EventFeedProps) {
     </ScrollArea>
   );
 }
+
+export default memo(EventFeed);

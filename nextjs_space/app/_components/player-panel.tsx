@@ -4,6 +4,7 @@ import { BOARD_SPACES } from '@/lib/engine/board-data';
 import { getCharmDef, RARITY_COLORS } from '@/lib/engine/charms-data';
 import { computeModifiers } from '@/lib/engine/charm-effects';
 import { calculateNetWorth } from '@/lib/engine/reducer';
+import { memo } from 'react';
 import { motion } from 'framer-motion';
 import { Coins, MapPin, Crown, Skull } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -16,7 +17,7 @@ interface PlayerPanelProps {
   onCharmClick?: (charm: OwnedCharm) => void;
 }
 
-export default function PlayerPanel({ player, isActive, properties, state, onCharmClick }: PlayerPanelProps) {
+function PlayerPanel({ player, isActive, properties, state, onCharmClick }: PlayerPanelProps) {
   if (!player) return null;
 
   const netWorth = calculateNetWorth(state, player);
@@ -26,6 +27,8 @@ export default function PlayerPanel({ player, isActive, properties, state, onCha
 
   return (
     <motion.div
+      role="region"
+      aria-label={`${player.name}${isActive ? ', current player' : ''}${player.isAI ? ', computer player' : ''}`}
       className={`rounded-lg p-3 border transition-all min-w-[200px] lg:min-w-0 ${
         isActive
           ? 'border-yellow-500/50 bg-yellow-500/10 ring-1 ring-yellow-500/30'
@@ -169,3 +172,5 @@ export default function PlayerPanel({ player, isActive, properties, state, onCha
     </motion.div>
   );
 }
+
+export default memo(PlayerPanel);

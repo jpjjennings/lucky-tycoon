@@ -66,6 +66,9 @@ export function createInitialState(
   customIcons?: string[],
   aiPlayers?: AIPlayerConfig[]
 ): GameState {
+  if (aiPlayers && playerNames.length > 0 && playerNames.every((_, index) => aiPlayers[index]?.enabled === true)) {
+    throw new Error('A game requires at least one human player.');
+  }
   const cfg = { ...DEFAULT_CONFIG, ...(config ?? {}) };
   const gameSeed = seed ?? Math.floor(Math.random() * 2147483647);
   const icons = customIcons && customIcons.length > 0 ? customIcons : PLAYER_ICONS;

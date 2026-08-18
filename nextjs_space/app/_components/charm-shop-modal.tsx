@@ -5,6 +5,7 @@ import { computeModifiers } from '@/lib/engine/charm-effects';
 import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { ShoppingBag, RefreshCw, X, Coins, Lock, Unlock, ArrowUp } from 'lucide-react';
+import { useDialogFocus } from '@/hooks/use-dialog-focus';
 
 interface CharmShopModalProps {
   state: GameState;
@@ -14,6 +15,7 @@ interface CharmShopModalProps {
 export default function CharmShopModal({ state, onAction }: CharmShopModalProps) {
   const player = state?.players?.[state?.currentPlayerIndex ?? 0];
   const shop = state?.charmShop;
+  const dialogRef = useDialogFocus<HTMLDivElement>(!!player && !!shop);
   if (!player || !shop) return null;
 
   const mods = computeModifiers(player, state, 'PASSIVE');
@@ -24,6 +26,10 @@ export default function CharmShopModal({ state, onAction }: CharmShopModalProps)
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
       <motion.div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="charm-shop-dialog-title"
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-gray-900 border border-purple-500/30 rounded-xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto"
@@ -31,7 +37,7 @@ export default function CharmShopModal({ state, onAction }: CharmShopModalProps)
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <ShoppingBag className="w-5 h-5 text-purple-400" />
-            <h2 className="font-display font-bold text-lg text-purple-300">Charm Shop</h2>
+            <h2 id="charm-shop-dialog-title" className="font-display font-bold text-lg text-purple-300">Charm Shop</h2>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-400">{slotsAvailable} slot{slotsAvailable !== 1 ? 's' : ''} available</span>
@@ -174,7 +180,7 @@ export default function CharmShopModal({ state, onAction }: CharmShopModalProps)
               <RefreshCw className="w-4 h-4 mr-1" /> Reroll ({shop.rerollsLeft})
             </Button>
           )}
-          <Button onClick={() => onAction({ type: 'CLOSE_SHOP' })} variant="ghost" className="flex-1">
+          <Button data-dialog-autofocus onClick={() => onAction({ type: 'CLOSE_SHOP' })} variant="ghost" className="flex-1">
             <X className="w-4 h-4 mr-1" /> Close Shop
           </Button>
         </div>

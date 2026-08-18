@@ -12,6 +12,22 @@ const charm: OwnedCharm = {
   level: 1,
 };
 
+test('all-AI local games are rejected', () => {
+  assert.throws(
+    () => createInitialState(
+      ['AI One', 'AI Two'],
+      123,
+      undefined,
+      undefined,
+      [
+        { enabled: true, personality: 'cautious' },
+        { enabled: true, personality: 'random' },
+      ],
+    ),
+    /at least one human player/i,
+  );
+});
+
 test('Charm Shop stays locked before round 5', () => {
   const state = { ...createInitialState(['A', 'B']), round: 4, phase: 'PLAYER_ACTION' as const };
   const next = gameReducer(state, { type: 'OPEN_SHOP' });

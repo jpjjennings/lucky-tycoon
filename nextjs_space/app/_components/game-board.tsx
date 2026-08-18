@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useGameStore, AnimationState } from '@/lib/store';
 import { GameState, Player, Property, GameMode, OwnedCharm } from '@/lib/engine/types';
 import { getCharmDef } from '@/lib/engine/charms-data';
@@ -54,6 +54,14 @@ export default function GameBoard({ externalState, onExternalAction, onExternalR
   const rollWithAnimation = useGameStore((s: any) => s.rollWithAnimation);
 
   const currentPlayer = state?.players?.[state?.currentPlayerIndex ?? 0];
+  const propertiesByPlayer = useMemo(() => {
+    const byPlayer = new Map<string, Property[]>();
+    (state?.properties ?? []).forEach((property: Property) => {
+      if (!property.ownerId) return;
+      byPlayer.set(property.ownerId, [...(byPlayer.get(property.ownerId) ?? []), property]);
+    });
+    return byPlayer;
+  }, [state?.properties]);
   const phase = state?.phase ?? 'ROLL_DICE';
   const tradeResponder = state?.tradeOffer?.status === 'pending'
     ? state.players.find((player: Player) => player.id === state.tradeOffer?.toPlayerId && player.isAI)
@@ -223,6 +231,9 @@ export default function GameBoard({ externalState, onExternalAction, onExternalR
       <a href="#game-main" className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-[200] focus:rounded-md focus:bg-yellow-400 focus:px-3 focus:py-2 focus:text-sm focus:font-bold focus:text-gray-950">
         Skip to game board
       </a>
+      <p className="sr-only" aria-live="polite">
+        {currentPlayer?.name ?? 'Current player'} is active. Current phase: {phase.replace(/_/g, ' ').toLowerCase()}.
+      </p>
       {/* Header */}
       <header aria-label="Game header" className="bg-gray-900/80 backdrop-blur border-b border-gray-800 px-4 py-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
@@ -325,7 +336,7 @@ export default function GameBoard({ externalState, onExternalAction, onExternalR
                 key={player?.id ?? i}
                 player={player}
                 isActive={i === (state?.currentPlayerIndex ?? 0)}
-                properties={(state?.properties ?? []).filter((p: Property) => p.ownerId === player?.id)}
+                properties={propertiesByPlayer.get(player?.id) ?? []}
                 state={state}
                 onCharmClick={(charm: OwnedCharm) =>
                   setCharmDetail({ owned: charm, playerName: player?.name ?? 'Player', isNew: false })

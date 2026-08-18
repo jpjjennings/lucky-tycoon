@@ -7,6 +7,7 @@ import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { HandCoins, X, Check, ArrowRight } from 'lucide-react';
+import { useDialogFocus } from '@/hooks/use-dialog-focus';
 
 interface TradeModalProps {
   state: GameState;
@@ -17,6 +18,7 @@ interface TradeModalProps {
 export default function TradeModal({ state, onAction, onClose }: TradeModalProps) {
   const currentPlayer = state?.players?.[state?.currentPlayerIndex ?? 0];
   const tradeOffer = state?.tradeOffer;
+  const dialogRef = useDialogFocus<HTMLDivElement>(!!tradeOffer);
 
   // If there's a pending trade, show accept/reject
   if (tradeOffer?.status === 'pending') {
@@ -24,12 +26,16 @@ export default function TradeModal({ state, onAction, onClose }: TradeModalProps
     const to = (state?.players ?? []).find((p: Player) => p.id === tradeOffer.toPlayerId);
     return (
       <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-        <motion.div
+         <motion.div
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="trade-dialog-title"
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           className="bg-gray-900 border border-cyan-500/30 rounded-xl p-6 max-w-md w-full"
         >
-           <h2 className="font-display font-bold text-lg text-cyan-300 mb-4">{tradeOffer.counterCount ? '🔁 Counter-Offer' : '🤝 Trade Offer'}</h2>
+           <h2 id="trade-dialog-title" className="font-display font-bold text-lg text-cyan-300 mb-4">{tradeOffer.counterCount ? '🔁 Counter-Offer' : '🤝 Trade Offer'}</h2>
           <p className="text-sm text-gray-300 mb-3">
             <span style={{ color: from?.color }}>{from?.name}</span> offers a trade to{' '}
             <span style={{ color: to?.color }}>{to?.name}</span>
@@ -59,7 +65,7 @@ export default function TradeModal({ state, onAction, onClose }: TradeModalProps
           </div>
 
           <div className="flex gap-2">
-            <Button onClick={() => onAction({ type: 'RESPOND_TRADE', accept: true })} className="flex-1 bg-green-600 hover:bg-green-500">
+             <Button data-dialog-autofocus onClick={() => onAction({ type: 'RESPOND_TRADE', accept: true })} className="flex-1 bg-green-600 hover:bg-green-500">
               <Check className="w-4 h-4 mr-1" /> Accept
             </Button>
             <Button onClick={() => onAction({ type: 'RESPOND_TRADE', accept: false })} variant="destructive" className="flex-1">
@@ -81,6 +87,7 @@ function TradeBuilder({ state, currentPlayer, onAction, onClose }: {
   onAction: (action: any) => void;
   onClose: () => void;
 }) {
+  const dialogRef = useDialogFocus<HTMLDivElement>();
   const otherPlayers = (state?.players ?? []).filter((p: Player) => p.isAlive && p.id !== currentPlayer?.id);
   const [targetId, setTargetId] = useState(otherPlayers[0]?.id ?? '');
   const [giveMoney, setGiveMoney] = useState(0);
@@ -120,6 +127,10 @@ function TradeBuilder({ state, currentPlayer, onAction, onClose }: {
   return (
     <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
       <motion.div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="trade-builder-title"
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}
         className="bg-gray-900 border border-cyan-500/30 rounded-xl p-6 max-w-2xl w-full max-h-[85vh] overflow-y-auto"
@@ -127,7 +138,7 @@ function TradeBuilder({ state, currentPlayer, onAction, onClose }: {
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <HandCoins className="w-5 h-5 text-cyan-400" />
-            <h2 className="font-display font-bold text-lg text-cyan-300">Propose Trade</h2>
+            <h2 id="trade-builder-title" className="font-display font-bold text-lg text-cyan-300">Propose Trade</h2>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}><X className="w-4 h-4" /></Button>
         </div>
