@@ -132,6 +132,21 @@ test('conditional charm event rewards an eligible player', () => {
   assert.equal(next.phase, 'PLAYER_ACTION');
 });
 
+test('round-start events return the active player to the dice phase', () => {
+  const initial = createInitialState(['A', 'B']);
+  const state = {
+    ...initial,
+    phase: 'EVENT_RESOLUTION' as const,
+    activeEvent: EVENT_DECK.find((candidate) => candidate.id === 'market-crash') ?? null,
+    eventReturnPhase: 'ROLL_DICE' as const,
+  };
+
+  const next = gameReducer(state, { type: 'RESOLVE_EVENT' });
+
+  assert.equal(next.phase, 'ROLL_DICE');
+  assert.equal(next.eventReturnPhase, null);
+});
+
 test('AI chooses to roll only for the active AI player', () => {
   const initial = createInitialState(['AI', 'Human'], undefined, { aiDifficulty: 'medium' }, undefined, [
     { enabled: true, personality: 'cautious' },

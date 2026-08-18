@@ -12,6 +12,8 @@ npm run dev
 
 The game is client-side and persists the current game in browser local storage. No database or environment variables are required for the core game.
 
+On Windows, use `windows_scripts\start_dev.bat` to start the Next.js and multiplayer development servers in separate command windows. Use `windows_scripts\stop_dev.bat` to stop Lucky Tycoon development processes. On macOS/Linux, run `mac_scripts/start_dev` and `mac_scripts/stop_dev`. The scripts use `DEV_PORT` and `DEV_URL` when set.
+
 ## Multiplayer Server (Sprint 7 foundation)
 
 Start the authoritative WebSocket room server separately:

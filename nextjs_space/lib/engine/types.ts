@@ -234,6 +234,7 @@ export interface GameState {
   diceResult: [number, number] | null;
   eventLog: GameEventEntry[];
   activeEvent: RandomEvent | null;
+  eventReturnPhase?: GamePhase | null;
   tradeOffer: TradeOffer | null;
   charmShop: CharmShopState | null;
   charmShopBonus?: { size: number; rerolls: number } | null;

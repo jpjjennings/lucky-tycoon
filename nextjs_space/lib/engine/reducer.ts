@@ -110,6 +110,7 @@ export function createInitialState(
       highlight: true,
     }),
     activeEvent: null,
+    eventReturnPhase: null,
     tradeOffer: null,
     charmShop: null,
     charmShopBonus: null,
@@ -731,7 +732,7 @@ function resolveSpace(state: GameState, spaceIndex: number): GameState {
     }
 
     case 'EVENT': {
-      return drawRandomEvent(s, player);
+      return drawRandomEvent(s, player, 'PLAYER_ACTION');
     }
 
     case 'START': {
@@ -1019,10 +1020,10 @@ function handleEndTurn(state: GameState): GameState {
 
 function triggerRandomEvent(state: GameState): GameState {
   const player = (state.players ?? [])[state.currentPlayerIndex];
-  return drawRandomEvent(state, player);
+  return drawRandomEvent(state, player, 'ROLL_DICE');
 }
 
-function drawRandomEvent(state: GameState, player: Player | undefined): GameState {
+function drawRandomEvent(state: GameState, player: Player | undefined, returnPhase: GameState['phase']): GameState {
   let s = { ...state };
   let availableEvents = EVENT_DECK.filter((event) =>
     !(s.usedEventIds ?? []).includes(event.id) && isEventConditionMet(s, event.condition, player)
@@ -1040,6 +1041,7 @@ function drawRandomEvent(state: GameState, player: Player | undefined): GameStat
   }
 
   s.activeEvent = event;
+  s.eventReturnPhase = returnPhase;
   s.usedEventIds = [...(s.usedEventIds ?? []), event.id];
   s.phase = 'EVENT_RESOLUTION';
   s.eventLog = addLogEntry(s.eventLog, {
@@ -1288,11 +1290,12 @@ function handleResolveEvent(state: GameState): GameState {
   let s = { ...state };
   const evt = s.activeEvent;
   const player = (s.players ?? [])[s.currentPlayerIndex];
-  if (!evt || !player) { s.phase = 'PLAYER_ACTION'; return s; }
+  if (!evt || !player) { s.phase = 'PLAYER_ACTION'; s.eventReturnPhase = null; return s; }
 
   if (!isEventConditionMet(s, evt.condition, player)) {
     s.activeEvent = null;
-    s.phase = 'PLAYER_ACTION';
+    s.phase = s.eventReturnPhase ?? 'PLAYER_ACTION';
+    s.eventReturnPhase = null;
     s.eventLog = addLogEntry(s.eventLog, {
       type: 'EVENT',
       message: `${evt.name} had no effect because its condition was not met.`,
@@ -1305,7 +1308,8 @@ function handleResolveEvent(state: GameState): GameState {
   if (evt.effect?.type === 'MONEY_DELTA') {
     s.players = updatePlayer(s, player.id, { money: Math.max(0, (player.money ?? 0) + evt.effect.amount) });
     s.activeEvent = null;
-    s.phase = 'PLAYER_ACTION';
+    s.phase = s.eventReturnPhase ?? 'PLAYER_ACTION';
+    s.eventReturnPhase = null;
     s.eventLog = addLogEntry(s.eventLog, {
       type: 'EVENT',
       message: evt.effect.successMessage.replace('{player}', player.name),
@@ -1463,7 +1467,8 @@ function handleResolveEvent(state: GameState): GameState {
       s.activeEvent = null;
   }
 
-  s.phase = 'PLAYER_ACTION';
+  s.phase = s.eventReturnPhase ?? 'PLAYER_ACTION';
+  s.eventReturnPhase = null;
   return s;
 }
 
